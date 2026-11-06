@@ -123,7 +123,7 @@ export function StopTicket({ stop, chosen, active, onSelect, onChoose }: { stop:
                 <li key={x.id}>
                   <button type="button" onClick={() => onChoose(j)} aria-current={j === chosen} className={`flex w-full items-center gap-3 rounded-xl border-2 px-2 py-2 text-left transition ${j === chosen ? "border-gold bg-[rgba(201,160,99,0.14)]" : "border-transparent hover:bg-[rgba(201,160,99,0.08)]"}`} aria-label={`Show ${x.name}`}>
                     <span className="relative size-14 shrink-0 overflow-hidden rounded-xl border-2 border-gold bg-sunk">
-                      <Photo src={photoSrc(x, 160)} className="absolute inset-0 h-full w-full" iconClass="size-5" />
+                      <Photo src={photoSrc(x)} className="absolute inset-0 h-full w-full" iconClass="size-5" />
                       <span className="absolute bottom-0.5 left-0.5 grid size-6 place-items-center rounded-full bg-[#120d0b] text-[0.8rem] font-extrabold text-[#f3d9ad]">{j + 1}</span>
                     </span>
                     <span className="min-w-0 flex-1">

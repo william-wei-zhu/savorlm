@@ -40,11 +40,11 @@ export type Option = {
   sources: Source[];
 };
 
-/** Photo URL for an option: by place id when known, else looked up by name + address on demand. */
-export function photoSrc(o: Pick<Option, "placeId" | "photo" | "name" | "address">, w: 160 | 800 = 800): string {
-  if (o.photo) return `/api/photo?ref=${encodeURIComponent(o.photo)}${w === 160 ? "&w=160" : ""}`;
-  if (o.placeId) return `/api/photo?pid=${encodeURIComponent(o.placeId)}${w === 160 ? "&w=160" : ""}`;
-  return `/api/photo?q=${encodeURIComponent(`${o.name}, ${o.address}`.slice(0, 200))}${w === 160 ? "&w=160" : ""}`;
+/** Photo URL for an option: its photo name (with the place id as a fallback if that name went stale), else the place id, else looked up by name + address. */
+export function photoSrc(o: Pick<Option, "placeId" | "photo" | "name" | "address">): string {
+  if (o.photo) return `/api/photo?ref=${encodeURIComponent(o.photo)}${o.placeId ? `&pid=${encodeURIComponent(o.placeId)}` : ""}`;
+  if (o.placeId) return `/api/photo?pid=${encodeURIComponent(o.placeId)}`;
+  return `/api/photo?q=${encodeURIComponent(`${o.name}, ${o.address}`.slice(0, 200))}`;
 }
 
 export type StopCard = {
