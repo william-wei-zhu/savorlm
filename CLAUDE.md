@@ -54,8 +54,9 @@ Scene events (`lib/guide/scene.ts`): `say`, `fly`, `stop` (StopCard = role, line
 ## Design
 - An evening menu: the side panel (`.menu`) is always espresso + gold in both themes (deliberate). Fraunces / Figtree 600 / DM Mono. Component classes live in `@layer components` so utilities can override them.
 - Ask box (text + "Or just talk to Savvy") at the top of the panel under the city picker. Tickets: top option with photo, "Local favorite · named by N guides", why, facts, Jev badges, Reserve / Directions / Call, sources (supporting pages first, then the lists that named it), then "More top picks" rows that swap in on tap.
-- Tagline: "Your raccoon guide to the city's best bites".
+- Tagline: "Your foodie guide to the city's best dining spots".
 - The whole page scrolls (William, 2026-11-06: do not freeze the top of the panel); on desktop the map column is `sticky top-0 h-dvh self-start` so it stays in view.
+- Below `lg`, Savvy + bubble are `fixed` to the viewport bottom (William: "the raccoon is hiding down below" once the whole page scrolled); on desktop they sit inside the sticky map. Size steps `w-28 sm:w-40 lg:w-56 xl:w-64 2xl:w-72`.
 - Mobile: single column must be `minmax(0,1fr)` or the map stretches to the panel's min-content.
 
 ## Guards

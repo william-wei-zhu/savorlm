@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">SavorLM</h1>
-<p align="center">Your raccoon guide to the city's best bites. <a href="https://savorlm.com">savorlm.com</a></p>
+<p align="center">Your foodie guide to the city's best dining spots. <a href="https://savorlm.com">savorlm.com</a></p>
 
 Tell Savvy what you're craving ("famous brisket for lunch, then a Rainey Street bar", or just "a quick healthy salad near Pike Place"), by voice or by typing. He finds the places people love most in 21 US cities and walks you through them on the map. Every stop comes with the top 3 to 5 options, live hours, a calibrated fit check, and the sources behind it.
 

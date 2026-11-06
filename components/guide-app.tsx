@@ -376,11 +376,11 @@ export function GuideApp() {
       {/* The map with Savvy standing on it. */}
       <section className="relative order-1 h-[52dvh] lg:sticky lg:top-0 lg:order-2 lg:h-dvh lg:self-start" aria-label="Map">
         <MapView ref={map} className="absolute inset-0" initial={center(city)} onPick={focusStop} />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end gap-1 p-2 pb-4 sm:gap-3 sm:p-6">
-          <div className="savvy-stage pointer-events-auto w-40 shrink-0 sm:w-60 lg:w-72">
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex items-end gap-1 p-2 pb-3 sm:gap-3 sm:p-4 lg:absolute lg:p-6">
+          <div className="savvy-stage pointer-events-auto w-28 shrink-0 sm:w-40 lg:w-56 xl:w-64 2xl:w-72">
             <Savvy pose={pose} speaking={speaking} className="h-auto w-full" onPoke={() => !speaking && gesture("laugh", "listen", 1300)} />
           </div>
-          <div className="bubble pointer-events-auto mb-10 max-w-[34rem] px-4 pb-3 pt-4 sm:mb-16 sm:px-5 sm:pb-4 sm:pt-5" aria-live="polite">
+          <div className="bubble pointer-events-auto mb-6 max-w-[34rem] px-4 pb-3 pt-4 sm:mb-10 sm:px-5 sm:pb-4 sm:pt-5 lg:mb-16" aria-live="polite">
             <span className="kicker name-tag">Savvy</span>
             <p className="text-[1.02rem] leading-snug sm:text-[1.2rem]">{caption}</p>
             {(status === "thinking" || status === "hearing") && (
@@ -395,7 +395,7 @@ export function GuideApp() {
       </section>
 
       {/* The panel: a printed evening menu. */}
-      <section className="menu order-2 flex min-h-dvh flex-col lg:order-1">
+      <section className="menu order-2 flex min-h-dvh flex-col pb-40 sm:pb-52 lg:order-1 lg:pb-0">
         <header className="flex items-center gap-3 px-6 pb-3 pt-6">
           <div className="rounded-full border-2 border-gold p-1">
             <Image src="/savvy/avatar.webp" alt="" width={64} height={64} className="size-14 rounded-full bg-[#2a211d]" />
