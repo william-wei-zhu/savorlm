@@ -18,7 +18,7 @@ export async function generateMetadata({ params }: PageProps<"/t/[id]">): Promis
   const top = tour.stops[0]?.options.map((o) => o.name).slice(0, 4) ?? [];
   const title = `${tour.title} · ${city.name}`;
   const description = tour.stops.length > 1 ? `Savvy's picks: ${picks.join(", then ")}.` : `Top picks: ${top.join(", ")}.`;
-  const image = { url: `/og/${city.slug}.jpg`, width: 1200, height: 630, alt: `${NAME} ${city.name}` };
+  const image = { url: "/og/savorlm.jpg", width: 1200, height: 630, alt: "SavorLM: Savvy the raccoon food guide" };
   return {
     title: { absolute: `${title} | ${NAME}` },
     description,

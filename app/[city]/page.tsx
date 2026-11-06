@@ -20,7 +20,7 @@ export async function generateMetadata({ params }: PageProps<"/[city]">): Promis
   const { name, slug } = CITIES[id];
   const title = `${NAME} ${name}`;
   const description = `${TAGLINE}. The places locals love in ${name}, from a quick salad to a big night out, planned on the map by Savvy with live hours.`;
-  const image = { url: `/og/${slug}.jpg`, width: 1200, height: 630, alt: `${NAME} ${name}: Savvy the raccoon food guide` };
+  const image = { url: "/og/savorlm.jpg", width: 1200, height: 630, alt: "SavorLM: Savvy the raccoon food guide" };
   return {
     title: { absolute: `${title}: ${TAGLINE}` },
     description,
