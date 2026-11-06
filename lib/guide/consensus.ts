@@ -23,6 +23,7 @@ export function normName(s: string): string {
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
+    .replace(/\([^)]*\)/g, " ") // "(Midtown)": a location note, not the name
     .replace(/&/g, " and ")
     .replace(/['’]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
@@ -66,7 +67,26 @@ export function mergeMentions(list: Mention[]): Consensus[] {
       c.mentions = c.domains.length;
     }
   });
-  return [...by.values()].sort((a, b) => b.mentions - a.mentions || a.first - b.first).map((c) => ({ key: c.key, name: c.name, area: c.area, mentions: c.mentions, domains: c.domains, urls: c.urls }));
+  // "Hattie Bs" and "Hattie Bs Hot Chicken" are one place: merge a name that
+  // is a whole-word prefix of a longer one (at least 5 letters, so "Joe" stays apart).
+  const groups = [...by.values()].sort((a, b) => a.key.length - b.key.length);
+  for (let i = 0; i < groups.length; i++) {
+    const short = groups[i];
+    if (short.key.replace(/ /g, "").length < 5) continue;
+    for (let j = i + 1; j < groups.length; j++) {
+      const long = groups[j];
+      if (long.key.startsWith(`${short.key} `)) {
+        for (const d of long.domains) if (!short.domains.includes(d)) short.domains.push(d);
+        for (const u of long.urls) if (!short.urls.includes(u)) short.urls.push(u);
+        short.mentions = short.domains.length;
+        short.first = Math.min(short.first, long.first);
+        if (!short.area) short.area = long.area;
+        if (long.mentions > short.mentions || long.name.length > short.name.length) short.name = long.name.replace(/\s*\([^)]*\)\s*/g, " ").trim();
+        groups.splice(j--, 1);
+      }
+    }
+  }
+  return groups.sort((a, b) => b.mentions - a.mentions || a.first - b.first).map((c) => ({ key: c.key, name: c.name.replace(/\s*\([^)]*\)\s*/g, " ").trim(), area: c.area, mentions: c.mentions, domains: c.domains, urls: c.urls }));
 }
 
 /** Popularity for ranking: independent mentions dominate; a stated rating nudges ties. */

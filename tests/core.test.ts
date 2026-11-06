@@ -74,6 +74,19 @@ describe("web consensus", () => {
     expect(m[0].urls.length).toBe(4);
     expect(m[1].mentions).toBe(1);
   });
+  it("merges a name with its longer form and drops location notes", () => {
+    const m = mergeMentions([
+      { name: "Hattie B's (Midtown)", area: "", url: "https://a.com/best" },
+      { name: "Hattie B's Hot Chicken (Midtown)", area: "Midtown", url: "https://b.com/best" },
+      { name: "Prince's Hot Chicken Shack", area: "", url: "https://c.com/best" },
+      { name: "Joe's", area: "", url: "https://a.com/best" },
+      { name: "Joe's Pizza", area: "", url: "https://b.com/best" },
+    ]);
+    const hattie = m.find((c) => c.name.startsWith("Hattie"))!;
+    expect(hattie.mentions).toBe(2);
+    expect(hattie.name).toBe("Hattie B's Hot Chicken");
+    expect(m.filter((c) => c.name.startsWith("Joe")).length).toBe(2);
+  });
   it("ranks by mentions, a stated rating breaking ties", () => {
     expect(popularity(3)).toBeGreaterThan(popularity(2, "4.9 Google"));
     expect(popularity(2, "4.8")).toBeGreaterThan(popularity(2, "4.2"));
