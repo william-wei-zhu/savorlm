@@ -95,6 +95,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   const [title, setTitle] = useState(initialTour?.title ?? "");
   const [shareId, setShareId] = useState<string | null>(initialTour?.id ?? null);
   const [copied, setCopied] = useState(false);
+  const [streaming, setStreaming] = useState(false); // the server is still sending this answer
   const [input, setInput] = useState("");
   const [voice, setVoice] = useState(true);
   const [micLv, setMicLv] = useState(0);
@@ -306,6 +307,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
       setTitle("");
       setShareId(null);
       setCopied(false);
+      setStreaming(true);
       setStops([]);
       stopsRef.current = [];
       choiceRef.current = {};
@@ -321,6 +323,16 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
       const queue: SceneEvent[] = [];
       const sig: { done: boolean; wake: (() => void) | null } = { done: false, wake: null };
       const push = (e: SceneEvent) => {
+        // The list's title and share link apply the moment they arrive, not
+        // after Savvy finishes talking (William: Share must always be there).
+        if (id === run.current && e.t === "share") {
+          setShareId(e.id);
+          try {
+            window.history.replaceState(null, "", `/t/${e.id}`);
+          } catch {}
+          return;
+        }
+        if (id === run.current && e.t === "done" && e.title) setTitle(e.title);
         queue.push(e);
         sig.wake?.();
       };
@@ -346,6 +358,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
         } finally {
           sig.done = true;
           sig.wake?.();
+          if (id === run.current) setStreaming(false);
         }
       })();
 
@@ -372,11 +385,6 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
               document.title = `${NAME} ${CITIES[e.city].name}: ${TAGLINE}`;
             } catch {}
           }
-        } else if (e.t === "share") {
-          setShareId(e.id);
-          try {
-            window.history.replaceState(null, "", `/t/${e.id}`);
-          } catch {}
         } else if (e.t === "say") {
           setStatus("touring");
           lastLine = e.text;
@@ -415,7 +423,6 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           })();
         } else if (e.t === "done") {
           await settle();
-          if (e.title) setTitle(e.title);
           if (e.text) await say(e.text, "dance", id, "cozy");
           if (id === run.current && picked.length) gesture("cheer", "listen", 1900);
           setTurns((t) => [...t, { role: "guide", text: picked.length ? `I picked ${picked.join(", then ")}.` : lastLine }]);
@@ -532,6 +539,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
     setChoice({});
     setTitle("");
     setShareId(null);
+    setStreaming(false);
     setActive(null);
     setStatus("idle");
     setSpeaking(false);
@@ -715,16 +723,20 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
               <p className="user-bubble max-w-[88%] px-4 py-2.5">{lastUser.text}</p>
             </div>
           )}
-          {title && (
+          {(title || stops.length > 0) && (
             <div className="rise text-center">
               <p className="kicker text-gold-text">Your evening</p>
-              <h2 className="mt-1 text-[1.75rem]">{title}</h2>
-              {shareId && (
+              <h2 className="mt-1 text-[1.75rem]">{title || "Savvy's picks"}</h2>
+              {shareId ? (
                 <button type="button" onClick={() => void shareList()} className="btn mt-2 border-2 border-gold py-1.5 text-ink hover:bg-sunk">
                   {copied ? <Check className="size-4" aria-hidden /> : <Share2 className="size-4" aria-hidden />}
                   {copied ? "Link copied" : "Share this list"}
                 </button>
-              )}
+              ) : streaming ? (
+                <button type="button" disabled className="btn mt-2 border-2 border-gold py-1.5 text-ink opacity-70">
+                  <Share2 className="size-4" aria-hidden /> Saving your link…
+                </button>
+              ) : null}
             </div>
           )}
           {busy && stops.length < 1 && (
