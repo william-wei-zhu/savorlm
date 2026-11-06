@@ -68,7 +68,7 @@ Scene events (`lib/guide/scene.ts`): `city` (the plan's city), `say`, `fly`, `st
 - Stands on an espresso medallion with a gold ring (`.savvy-stage`) so he reads on the cream map.
 
 ## One list, never an itinerary
-William 2026-11-06: every request returns exactly ONE stop card with 4 picks (top pick + 3). The plan prompt allows only 1 stop (a multi-part ask uses the first food craving), `plan()` slices to 1, the multi-stop phase 2 was deleted, and the UI has no walk/ride hops. Suggested prompts never say "then ...", and Savvy's opening line never uses "first/then/after/next/later". Option names go through `displayName()` (`lib/guide/consensus.ts`), which cuts page-title noise such as " - Nashville - Lower Broadway" or " | Austin, TX". Older shared lists with several stops still render, without hops.
+William 2026-11-06: every request returns exactly ONE stop card with 4 picks (top pick + 3). The plan prompt allows only 1 stop (a multi-part ask uses the first food craving), `plan()` slices to 1, the multi-stop phase 2 was deleted, and the UI has no walk/ride hops. Suggested prompts never say "then ...", and Savvy's opening and closing lines go through `oneListLine()` (`lib/guide/speech.ts`), which drops any sentence with "first/then/after/next/later/kick off" (the prompt alone still slipped). Option names go through `displayName()` (`lib/guide/consensus.ts`), which cuts page-title noise such as " - Nashville - Lower Broadway" or " | Austin, TX". Older shared lists with several stops still render, without hops.
 
 ## Design
 - An evening menu: the side panel (`.menu`) is always espresso + gold in both themes (deliberate). Fraunces / Figtree 600 / DM Mono. Component classes live in `@layer components` so utilities can override them.

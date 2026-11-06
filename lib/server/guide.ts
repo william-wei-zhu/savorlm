@@ -7,6 +7,7 @@ import { cached, cacheKey } from "./cache";
 import { geocode, locate } from "./places";
 import { CITIES, CITY_IDS, type CityId } from "../cities";
 import { CHECKS, CHECK_IDS, badgeFrom, fitScore, type CheckId, type Verdict } from "../guide/checks";
+import { oneListLine } from "../guide/speech";
 import { displayName, hostOf, isRoundup, mergeMentions, normName, popularity, type Consensus, type Mention } from "../guide/consensus";
 import { cityShot, hop, stopShot, type LatLng } from "../guide/geo";
 import type { Option, SceneEvent, StopCard, Source } from "../guide/scene";
@@ -80,7 +81,7 @@ The user is currently looking at: ${city ? CITIES[city].name : "no city yet"}. U
 Decide:
 - kind "tour": the top places for what they want ("famous brisket", "a date-night dinner in the North Loop"). Exactly 1 stop.
 - kind "answer": one specific place or question ("is X open tonight"). Exactly 1 stop.
-If the user asks for several things (dinner then drinks, a food day), make the one stop their main craving, the first food they named. In "say", react to that craving only; never promise or mention anything for later, and never use words like "first", "then", "after", "next" or "later".
+If the user asks for several things (dinner then drinks, a food day), make the one stop their main craving, the first food they named, and act as if they had asked only for that. In "say", react to that craving only. Never hint at anything beyond it: no "first", "then", "after", "next", "later", "start", "kick off", "begin" or "for now".
 - kind "chat": greetings, thanks, or anything not about food, drink or eating out. 0 stops; steer back to food in "say".
 For each stop:
 - role: a short label ("dinner", "quick lunch", "brunch").
@@ -116,6 +117,7 @@ export async function plan(input: GuideInput): Promise<Plan> {
   out.stops = (out.stops ?? []).slice(0, 1).map((s) => ({ ...s, budget: s.budget === "none" ? "" : s.budget }));
   if (out.kind === "chat") out.stops = [];
   out.checks = (out.checks ?? []).filter((c) => c in CHECKS).slice(0, 3);
+  if (out.kind !== "chat") out.say = oneListLine(out.say ?? "");
   return out;
 }
 
@@ -436,5 +438,5 @@ export async function* runGuide(input: GuideInput): AsyncGenerator<SceneEvent> {
   const card0 = await stopCard(r0, res1.stops.find((x) => x.stop === 0), 0, s0.role, null, p.checks, cityName, cityId ?? "other", used);
   lap("locate1");
   if (card0) yield { t: "stop", stop: card0, shot: stopShot(card0.options[0], anchor) };
-  yield { t: "done", text: res1.outro, title: res1.title };
+  yield { t: "done", text: oneListLine(res1.outro, ""), title: res1.title };
 }

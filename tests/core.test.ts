@@ -6,7 +6,7 @@ import { displayName, mergeMentions, normName, popularity, isRoundup } from "@/l
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { sse, sseParser, type SceneEvent } from "@/lib/guide/scene";
-import { cleanSpeech } from "@/lib/guide/speech";
+import { cleanSpeech, oneListLine } from "@/lib/guide/speech";
 import { newTourId, TOUR_ID } from "@/lib/server/tours";
 import { clientIp } from "@/lib/server/client-ip";
 import { sameOrigin } from "@/lib/server/origin";
@@ -177,5 +177,15 @@ describe("displayName", () => {
     expect(displayName("Bolton's Spicy Chicken & Fish")).toBe("Bolton's Spicy Chicken & Fish");
     expect(displayName("Kuya-Ja's Lechon Belly")).toBe("Kuya-Ja's Lechon Belly");
     expect(displayName("LeRoy and Lewis Barbecue")).toBe("LeRoy and Lewis Barbecue");
+  });
+});
+
+describe("oneListLine", () => {
+  it("drops sentences that hint at a next stop", () => {
+    expect(oneListLine("Nothing hits like Nashville hot chicken. Let us get your spice fix sorted first.")).toBe("Nothing hits like Nashville hot chicken.");
+    expect(oneListLine("Hot chicken to kick things off!")).toBe("Let me round up the top spots.");
+  });
+  it("keeps a clean line", () => {
+    expect(oneListLine("Austin runs on great tortillas, so let me find four taco spots.")).toBe("Austin runs on great tortillas, so let me find four taco spots.");
   });
 });
