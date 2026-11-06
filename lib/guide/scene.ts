@@ -1,7 +1,6 @@
 // The scene script: what /api/guide streams to the browser, one SSE event per
 // line. The client plays events in order, so Savvy talks while the camera
 // flies. Shared by server and client (types only + a tiny encoder).
-import type { Distinction } from "../michelin/types";
 import type { Shot } from "./geo";
 
 export type Pose = "wave" | "listen" | "talk" | "think" | "point" | "wow" | "cheer" | "taste" | "laugh" | "clap" | "dance" | "look";
@@ -9,18 +8,22 @@ export type Pose = "wave" | "listen" | "talk" | "think" | "point" | "wow" | "che
 export type Badge = { id: string; label: string; p: number };
 export type Source = { title: string; url: string };
 
-export type StopCard = {
-  /** Spine id for Michelin spots, otherwise a hash of name + address. */
+/** One place for a stop. Every stop offers 3 to 5, best first. */
+export type Option = {
+  /** Stable hash of the normalized name + city. */
   id: string;
-  index: number;
-  role: string;
   name: string;
-  distinction: Distinction | null;
+  /** Short reason it made the list (max ~14 words). */
+  why: string;
+  /** Independent best-of sites that named it (web consensus), and which ones. */
+  mentions: number;
+  praisedBy: string[];
   cuisine: string;
   price: string;
   address: string;
   lat: number;
   lng: number;
+  /** Google place id when known (photo + maps link); only the top option is looked up. */
   placeId: string | null;
   mapsUrl: string;
   website: string;
@@ -29,8 +32,16 @@ export type StopCard = {
   openNow: "open" | "closed" | "unknown";
   hours: string;
   badges: Badge[];
-  line: string;
   sources: Source[];
+};
+
+export type StopCard = {
+  index: number;
+  role: string;
+  /** What Savvy says on arrival, about options[0]. */
+  line: string;
+  options: Option[];
+  /** Travel from the previous stop's top option. */
   hop: { mode: "walk" | "ride"; minutes: number } | null;
 };
 

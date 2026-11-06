@@ -1,4 +1,4 @@
 export const NAME = "SavorLM";
-export const TAGLINE = "Your raccoon guide to Michelin nights out";
-export const SUBTITLE = "Tell Savvy what you're craving. He plans the evening around Michelin restaurants and flies you there on a 3D map, with live hours from the web.";
+export const TAGLINE = "Your raccoon guide to the city's best bites";
+export const SUBTITLE = "From a quick salad to a tasting menu: Savvy finds the places locals love and plans it on the map, with live hours.";
 export const SITE = "https://savorlm.com";

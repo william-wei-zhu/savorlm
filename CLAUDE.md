@@ -2,59 +2,67 @@
 
 @AGENTS.md
 
-SavorLM v2: **Savvy**, a cute plush raccoon food guide (beret, chef jacket, guidebook), plans a night out around Michelin Guide restaurants and walks you through it on a map, by voice or text. Live at https://savorlm.com. Public repo `william-wei-zhu/savorlm` (rebuilt 2026-11-06 from scratch; the old `dishlm` repo stays private because its git history holds a hardcoded key). Built as a job-hunt showcase for restaurant / delivery / travel / maps roles. Follows William's Web App Building Standard, with the deviations noted below.
+SavorLM v2: **Savvy**, a cute plush raccoon food guide (beret, chef jacket, guidebook), finds the city's most popular, most famous spots for any craving (a quick salad to a tasting menu) and walks you through them on a map, by voice or text. Every stop offers the **top 3 to 5 options**. 21 US cities. Live at https://savorlm.com. Public repo `william-wei-zhu/savorlm` (rebuilt 2026-11-06 from scratch; the old `dishlm` repo stays private because its git history holds a hardcoded key). Built as a job-hunt showcase for restaurant / delivery / travel / maps roles. Follows William's Web App Building Standard, with the deviations noted below.
+
+## Product rules (William, 2026-11-06)
+- **Top spots = web consensus**, not awards: the places many independent best-of lists and local guides name. Any craving, any budget; fine dining welcome but not the point.
+- **Never show "Michelin" (or awards) in the UI or in Savvy's lines** unless the user says it first. A test (`tests/core.test.ts`, "brand") fails if the word appears in `app/`, `components/` or `lib/brand.ts`. The original Michelin spine was removed.
+- **Every stop shows 3 to 5 options**, best first; Savvy narrates his top pick, the user can tap another to make it the pick.
+- **US cities only** (`lib/cities.ts`): NYC, Boston, Philadelphia, DC, Atlanta, Nashville, New Orleans, Miami, Austin, Houston, Dallas, Chicago, Minneapolis, Denver, Phoenix & Scottsdale, Las Vegas, SF, LA, San Diego, Seattle, Portland. Grouped by region in the picker.
 
 ## Commands
 ```bash
 npm run dev          # http://localhost:3000 (needs .env.local, see .env.example)
 npm run build
-npm test             # vitest: geo, Jev badge rules, spine lookups, SSE parser, IP/origin guards
+npm test             # vitest: geo, Jev badge rules, consensus, cities, SSE parser, IP/origin guards, no-Michelin brand check
 npm run typecheck
-npm run spine -- ../dishlm/data/seed_restaurants.json [city,...]   # (re)build data/michelin/<city>.json
 cd art && python3 poses.py base|edits [only,...] && python3 key.py # regenerate / export Savvy frames
 ```
 
 ## Architecture (one Next.js app, idles at $0)
 - Next.js 16 App Router (cacheComponents on: **no `export const runtime` in route files**, it errors), Tailwind v4, React 19, Node 24. Vercel project `savorlm`.
-- GCP project **`savorlm-app`** (billing william-1): Firestore `(default)` in us-east4 (cache + usage counters only, deny-all rules in `firestore.rules`, deployed via the Rules REST API), service account `savorlm-server` (datastore.user), API keys `savorlm-gemini` (generativelanguage), `savorlm-places-server` (places), `savorlm-maps-browser` (maps-backend + tile, HTTP-referrer restricted). TTL policies on `expireAt` for `cache`, `usage`, `ips`, `tours`.
-- **No database of restaurants beyond the spine.** `data/michelin/<city>.json` (~440 spots, 12 cities, ~230 KB, bundled): name, distinction, cuisine, price, address, lat/lng, Google place id, maps url, website. Facts only, no guide text. Seeded from DishLM's 2025 list, geocoded by `scripts/spine.mts` (Places Text Search, re-runs only pay for new names). `tokyo.json` is empty: add it with Exa + the script.
-- Everything live (hours, open now, rating, phone, menus, news) comes from **Exa** at request time (`lib/server/exa.ts`, `type: "lite"`, highlights), cached in Firestore 3 to 12 h. Probed 2026-11-06: Exa Places results arrive as venue pages whose highlights hold hours/address/phone; no structured place entity came back on `lite`, so Gemini extracts the facts and the parser also accepts a place entity if Exa adds one.
+- GCP project **`savorlm-app`** (billing william-1): Firestore `(default)` in us-east4 (cache + usage counters only, deny-all rules in `firestore.rules`, deployed via the Rules REST API), service account `savorlm-server` (datastore.user), API keys `savorlm-gemini` (generativelanguage), `savorlm-places-server` (places + geocoding), `savorlm-maps-browser` (maps-backend + tile, HTTP-referrer restricted). TTL policies on `expireAt` for `cache`, `usage`, `ips`, `tours`.
+- **No restaurant data is stored.** Everything comes from Exa at request time (`lib/server/exa.ts`, `type: "lite"`, highlights), cached in Firestore 3 to 24 h. Exa "Places" results arrive as venue pages whose highlights hold hours/address/phone (no structured place entity on `lite`, probed 2026-11-06).
 
 ### The guide pipeline (`lib/server/guide.ts`, streamed by `/api/guide` as SSE)
-A fixed pipeline, not a free tool loop, so cost per tour is known and the first stop streams early:
-1. **plan** (Gemini `gemini-3.8-flash`, structured): kind tour/answer/chat, city, area, 1 to 4 stops (role, michelin required/preferred/no, distinctions, cuisine, Exa query, named), up to 3 checks, an opening line.
-2. **gather**: Michelin stops filter the spine (`findSpots`: distinction, cuisine words, within 3 km of the previous stop) then one Exa search per candidate for evidence; other stops are an Exa search near the previous stop. "Best of" roundups are filtered (`isRoundup`), and the pick step may choose one venue named inside a list article.
-3. **judge**: TypeSafe Jev (`jev-1.14.0`, `lib/server/jev.ts` ported from AI Discussion Club) answers each check yes/no/unknown with calibrated probabilities over the evidence. A badge shows only for "yes" at >= 0.6 (`badgeFrom`, tested). Cached 7 days.
-4. **pick** (Gemini, structured): one candidate per stop, the spoken line (max 32 words, only facts from evidence), open_now/hours/rating/phone extraction, source urls (kept only if they are in that candidate's evidence), outro + tour title.
-The first stop is picked alone so the camera can move while the rest are gathered near it. All outside text is wrapped (`<web_data>`, `<user_said>`) and declared untrusted. Typical timings: first line ~3 s, first stop ~7 s, 3-stop tour ~13 s.
+1. **plan** (Gemini `gemini-3.8-flash`, structured): kind tour/answer/chat, city, area, 1 to 4 stops (role, craving, tier special/any/quick, budget `none|$..$$$$`, area, named), up to 3 checks, an opening line. (An empty string in a schema enum is a 400: use "none".)
+2. **discover** (2 Exa lite searches per stop): "most popular best-loved {craving} {restaurants|bars|spots} in {area, city}" (wants roundups) + "{craving} {restaurant|bar} {area, city}" (venue pages).
+3. **extract** (`gemini-3.5-flash-lite`, temp 0, one call per phase): every venue each page names that fits the stop, with its page index.
+4. **consensus** (`lib/guide/consensus.ts`, pure, tested): `normName`, `mergeMentions` counts distinct independent domains per venue (a venue's own site never counts), `popularity`. Top 5 go on.
+5. **evidence** (1 Exa search per venue: hours, menu, rating) + **judge** (TypeSafe Jev `jev-1.14.0`, yes/no/unknown with calibrated probabilities; badge only for yes >= 0.6; `affordable` asks with the stop's budget; cached 7 days).
+6. **pick** (`gemini-3.5-flash-lite`, structured): per stop 3 to 5 ranked options (fit first, then Jev checks, then consensus), a `why` per option, the spoken `line` about the first, facts (open_now/hours/rating/phone/address/cuisine/price), source urls. Code tops up to 4 options from the ranked candidates if the model returns fewer.
+The first stop is picked alone so the camera can move while the rest are found near it (phase 2 discovers near stop 1's area). Measured 2026-11-06: first stop ~9 to 10 s, 2-stop tour ~20 s (phase 2 runs while Savvy narrates stop 1). The pick step on `gemini-3.8-flash` took ~7 s, on flash-lite ~4 s, hence `GEMINI_PICK_MODEL` defaults to flash-lite.
+- Locating options (`toOption`): the top option per stop uses Places Text Search (place id for photo + maps link); the rest use the Geocoding API from their address (10k free/mo). Every lookup falls back to geocoding (name + area + city), so the Places daily cap never drops an option. If the narrated first choice could not be located, the line is rebuilt from the new first option's `why` so Savvy never names a place that is not on the card.
+- A place appears in one stop only (dedupe by candidate key and by normalized final name).
+- All outside text is wrapped (`<web_data>`, `<user_said>`) and declared untrusted.
 
-Scene events (`lib/guide/scene.ts`): `say`, `fly` (camera shot), `stop` (StopCard + shot), `done` (outro + title), `error`. The client director in `components/guide-app.tsx` plays them in order: speech runs while the camera moves, each stop waits for the previous line to finish.
+Scene events (`lib/guide/scene.ts`): `say`, `fly`, `stop` (StopCard = role, line, hop, `options: Option[]`), `done` (outro + title), `error`. The client director in `components/guide-app.tsx` plays them in order. `choice` (per stop index) holds the user's picked option; switching recomputes hops and flies the map.
 
 ### Voice
-`/api/hear` (Gemini `gemini-3.5-flash-lite` transcription, temp 0; recordings never stored), `/api/tts` (streamed PCM from `gemini-3.8-flash-lite-tts`, voice **Sadachbia**, mood tags are single adverbs only: longer tags get read aloud, learned on HiBenny). Mic VAD + WAV encoder (`lib/audio/recorder.ts`) and the PCM engine (`lib/audio/engine.ts`) are ported from HiBenny; end-silence 1.6 s (2.2 s just after speech starts).
+`/api/hear` (Gemini `gemini-3.5-flash-lite` transcription, temp 0; recordings never stored), `/api/tts` (streamed PCM from `gemini-3.8-flash-lite-tts`, voice **Sadachbia**, mood tags single adverbs only). Mic VAD + WAV encoder (`lib/audio/recorder.ts`) and PCM engine (`lib/audio/engine.ts`) ported from HiBenny.
 
 ### The map (`components/map-view.tsx`)
-- **2D by default** (William, 2026-11-06, cost): styled raster map ("parchment" JSON style, business POIs hidden, no mapId so styles apply), custom HTML pins via `OverlayView` (gold-ringed medallions, stars/B/number), dashed burgundy route, eased center+zoom "flights".
-- **"Fly in 3D" button** switches to the photorealistic `Map3DElement` (SATELLITE mode, `flyCameraTo` / `flyCameraAround`, `Marker3DInteractiveElement` with `RELATIVE_TO_MESH` + `drawsWhenOccluded` so pins sit above rooftops; at 60 m RELATIVE_TO_GROUND they hid inside Midtown towers). Only people who press it use 3D loads.
-- Pricing checked 2026-11-03 list: 2D Dynamic Maps $7/1k loads, 10k free/mo; 3D Immersive Maps $7/1k, 5k free/mo; Places Photos is Enterprise (1k free). **Hard daily quota caps** (gcloud beta quotas, 2026-11-06): 3D loads 150/day, 2D loads 300/day, Places GetPlace 30/day, GetPhotoMedia 30/day, SearchText 150/day. Over a cap, Google returns errors and the UI degrades (no photo, map error card), never a bill.
+- **2D by default** (cost): styled raster "parchment" map (business POIs hidden, no mapId so styles apply), custom `OverlayView` pins: numbered burgundy medallions per stop (active one gold), small cream medallions `2.2, 2.3...` for the active stop's other options (labels on hover only, they overlapped), dashed route, eased "flights".
+- **"Fly in 3D"** switches to `Map3DElement` (SATELLITE, `flyCameraTo` / `flyCameraAround`, `RELATIVE_TO_MESH` + `drawsWhenOccluded` markers).
+- Pricing (2026-11-03 list): 2D Dynamic Maps $7/1k, 10k free/mo; 3D Immersive Maps $7/1k, 5k free; Places Photos Enterprise (1k free); Text Search Pro 5k free; Geocoding 10k free. **Hard daily quota caps** (gcloud beta quotas; needed `--allow-high-percentage-quota-decrease --allow-quota-decrease-below-usage`): 3D loads 150, 2D loads 300, Places GetPlace 30, GetPhotoMedia 30, SearchText 150, Geocoding 300. Over a cap the UI degrades (no photo, geocoded pin), never a bill.
 
 ### Savvy (the rig)
-- Art: Gemini image (`gemini-3.1-flash-image`) from `art/candidates/savvy-ref.png` (William picked plush style; 2026-11-06 he asked for cuter, so the chibi beret version replaced the first plush one). 12 poses (wave, listen, talk, think, point, wow, cheer, taste, laugh, clap, dance, look) + edit-variants talk2, talk-blink, listen-blink, wave2, dance2 that reuse their base crop box (`art/key.py`, blue chroma key copied from HiBenny). Served from **`public/savvy/`** (renamed from /guide/ so browsers and the image optimizer drop the old art).
-- `components/savvy.tsx` (HiBenny's Benny rig): CSS mood loop per pose, per-frame voice bob/tilt from real loudness, pop on pose change, lip flap (talk2 when quiet), blinks, **two-frame cycles** for wave and dance, tap = giggle + laugh pose.
-- Choreography: every line opens with a gesture (`gesture(first, then)`) then settles to talk; binoculars (`look`) during flights; `wow` for Michelin arrivals, `point` for local picks, `dance` on the outro then `cheer`.
-- He stands on an espresso medallion with a gold ring (`.savvy-stage`): on the parchment map his cream jacket disappeared (William: "I can barely see the raccoon").
+- Art: Gemini image from `art/candidates/savvy-ref.png` (chibi plush raccoon with beret; William asked for cuter on 2026-11-06). 12 poses + edit-variants talk2, talk-blink, listen-blink, wave2, dance2 sharing their base crop box (`art/key.py`). Served from `public/savvy/` (renamed from /guide/ to bust caches).
+- `components/savvy.tsx` (HiBenny's rig): mood loops, voice bob/tilt, pop, lip flap, blinks, two-frame wave/dance cycles, tap = giggle + laugh. Lines open with a gesture then talk; binoculars during flights; `wow` when the pick is a local favorite (2+ guides), `point` otherwise; `dance` on the outro.
+- Stands on an espresso medallion with a gold ring (`.savvy-stage`) so he reads on the cream map.
 
 ## Design
-- An evening menu: the side panel (`.menu`) is always espresso + gold in both themes (a deliberate deviation: the panel is the printed menu; the map, bubble and subpages follow the theme). Fraunces (display), Figtree 600 body, DM Mono kickers. Tokens in `app/globals.css`; component classes live in `@layer components` so Tailwind utilities (like `p-0`) can override them (unlayered `.btn` padding once squeezed icons to 9 px).
-- The ask box (text + "Or just talk to Savvy") sits at the top of the panel under the city picker (William couldn't find the bottom composer). Suggested requests are menu rows with a gold chevron ring. Tickets: photo with name overlay, punched notches, Jev badges with %, Reserve / Directions / Call, sources.
-- Intro: gold rings draw in, Savvy pops through, wordmark rises (once per load, honors reduced motion).
-- Mobile: single column must be `minmax(0,1fr)` or the map section stretches to the panel's min-content (418 px on a 390 px phone).
+- An evening menu: the side panel (`.menu`) is always espresso + gold in both themes (deliberate). Fraunces / Figtree 600 / DM Mono. Component classes live in `@layer components` so utilities can override them.
+- Ask box (text + "Or just talk to Savvy") at the top of the panel under the city picker. Tickets: top option with photo, "Local favorite · named by N guides", why, facts, Jev badges, Reserve / Directions / Call, sources (supporting pages first, then the lists that named it), then "More top picks" rows that swap in on tap.
+- Tagline: "Your raccoon guide to the city's best bites".
+- The whole page scrolls (William, 2026-11-06: do not freeze the top of the panel); on desktop the map column is `sticky top-0 h-dvh self-start` so it stays in view.
+- Mobile: single column must be `minmax(0,1fr)` or the map stretches to the panel's min-content.
 
 ## Guards
-`lib/server/guard.ts` (HiBenny pattern): per-IP burst, per-IP daily, global daily budget per kind (guide 1500, hear 2000, tts 8000, photo 4000), trusted client IP, strict origin (`lib/server/origin.ts`). Without Firestore creds the guard fails closed in production and open in dev. Photos go through `/api/photo` (302 to a Google-hosted URI, cached a day); nothing is stored.
+`lib/server/guard.ts`: per-IP burst, per-IP daily, global daily budget per kind (guide 1500, hear 2000, tts 8000, photo 4000), trusted client IP, strict origin. Fails closed in production without Firestore. Photos via `/api/photo` (302 to a Google-hosted URI).
 
 ## Gotchas
-- `.env.local` has no `FIREBASE_SERVICE_ACCOUNT_B64`, so dev runs with memory cache only and no usage counters.
-- Headless Playwright screenshots of this page lag a few seconds behind (WebGL map); take a second screenshot before judging a frozen intro.
-- Gemini `thinkingLevel` "low" (3.8 Flash rejects "minimal"). INTEGER not NUMBER in schemas.
+- `.env.local` has no `FIREBASE_SERVICE_ACCOUNT_B64`: dev runs with memory cache only.
+- Headless Playwright screenshots of this page lag a few seconds; take a second one before judging.
+- Gemini 3.8 Flash `thinkingLevel` "low" (rejects "minimal"); INTEGER not NUMBER; no empty strings in enums.
 - The Exa and TypeSafe keys were pasted in chat on 2026-11-06: rotate them.

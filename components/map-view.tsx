@@ -7,13 +7,15 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Box, Map as MapIcon } from "lucide-react";
 import type { Shot } from "@/lib/guide/geo";
-import type { StopCard } from "@/lib/guide/scene";
-import type { Distinction } from "@/lib/michelin/types";
+
+/** A place on the map: each stop's current pick, or one of the active stop's other options. */
+export type Pin = { name: string; lat: number; lng: number; label: string };
 
 export type MapHandle = {
   fly: (shot: Shot) => Promise<void>;
   orbit: (stop: { lat: number; lng: number }) => void;
-  setStops: (stops: StopCard[], active: number | null) => void;
+  /** Stops in tour order (one pin each), the active one, and the active stop's other options. */
+  setStops: (stops: Pin[], active: number | null, alts?: Pin[]) => void;
 };
 
 const KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
@@ -62,26 +64,19 @@ const PARCHMENT: google.maps.MapTypeStyle[] = [
   { featureType: "administrative.neighborhood", elementType: "labels.text.fill", stylers: [{ color: "#6b1d2a" }] },
 ];
 
-const PIN: Record<Distinction | "open", { bg: string; glyph: string }> = {
-  "3star": { bg: "#6B1D2A", glyph: "★★★" },
-  "2star": { bg: "#7F2430", glyph: "★★" },
-  "1star": { bg: "#963A3A", glyph: "★" },
-  bib: { bg: "#9A6630", glyph: "B" },
-  selected: { bg: "#5E4E44", glyph: "M" },
-  open: { bg: "#1F4A57", glyph: "" },
-};
+/** Burgundy medallions in tour order; the stop Savvy is on turns gold. */
+const PIN = { base: "#6B1D2A", active: "#A87632" };
 
 /** Custom pin for the 2D map: a gold-ringed medallion with the stop's mark, and its name. */
-function pinEl(s: StopCard, i: number, big: boolean) {
-  const look = PIN[s.distinction ?? "open"];
+function pinEl(s: Pin, big: boolean, alt = false) {
   const el = document.createElement("button");
   el.type = "button";
-  el.className = `slm-pin${big ? " slm-pin-big" : ""}`;
+  el.className = `slm-pin${big ? " slm-pin-big" : ""}${alt ? " slm-pin-alt" : ""}`;
   el.setAttribute("aria-label", `${s.name} on the map`);
   const medal = document.createElement("span");
   medal.className = "slm-medal";
-  medal.style.background = look.bg;
-  medal.textContent = s.distinction ? look.glyph : String(i + 1);
+  medal.style.background = big ? PIN.active : PIN.base;
+  medal.textContent = s.label;
   const name = document.createElement("span");
   name.className = "slm-name";
   name.textContent = s.name;
@@ -105,7 +100,7 @@ export const MapView = forwardRef<MapHandle, Props>(function MapView({ className
   const map2d = useRef<google.maps.Map | null>(null);
   const overlays = useRef<{ remove: () => void }[]>([]);
   const anim = useRef(0);
-  const last = useRef<{ stops: StopCard[]; active: number | null; shot: Shot | null }>({ stops: [], active: null, shot: null });
+  const last = useRef<{ stops: Pin[]; active: number | null; alts: Pin[]; shot: Shot | null }>({ stops: [], active: null, alts: [], shot: null });
   const onPickRef = useRef(onPick);
   const [mode, setMode] = useState<"2d" | "3d">("2d");
   const [state, setState] = useState<"loading" | "ready" | "off">(KEY ? "loading" : "off");
@@ -120,19 +115,25 @@ export const MapView = forwardRef<MapHandle, Props>(function MapView({ className
     overlays.current = [];
   };
 
-  const drawStops = useCallback(async (stops: StopCard[], active: number | null) => {
+  const drawStops = useCallback(async (stops: Pin[], active: number | null, alts: Pin[] = []) => {
     clearOverlays();
     if (map3d.current) {
       const m3 = (await google.maps.importLibrary("maps3d")) as google.maps.Maps3DLibrary;
       const mk = (await google.maps.importLibrary("marker")) as google.maps.MarkerLibrary;
       stops.forEach((s, i) => {
-        const look = PIN[s.distinction ?? "open"];
         const big = i === active;
-        const pin = new mk.PinElement({ background: look.bg, borderColor: "#C5995E", glyphColor: "#FAF6F1", glyphText: s.distinction ? look.glyph : String(i + 1), scale: big ? 1.6 : 1.15 });
+        const pin = new mk.PinElement({ background: big ? PIN.active : PIN.base, borderColor: "#C5995E", glyphColor: "#FAF6F1", glyphText: s.label, scale: big ? 1.6 : 1.15 });
         // Mesh-relative so pins sit above rooftops; drawn even when a tower hides them.
         const marker = new m3.Marker3DInteractiveElement({ position: { lat: s.lat, lng: s.lng, altitude: big ? 40 : 20 }, altitudeMode: "RELATIVE_TO_MESH", extruded: true, drawsWhenOccluded: true, label: s.name });
         marker.append(pin);
         marker.addEventListener("gmp-click", () => onPickRef.current?.(i));
+        map3d.current!.append(marker);
+        overlays.current.push(marker);
+      });
+      alts.forEach((a) => {
+        const pin = new mk.PinElement({ background: "#FAF6F1", borderColor: "#6B1D2A", glyphColor: "#6B1D2A", glyphText: a.label, scale: 0.9 });
+        const marker = new m3.Marker3DElement({ position: { lat: a.lat, lng: a.lng, altitude: 15 }, altitudeMode: "RELATIVE_TO_MESH", extruded: true, drawsWhenOccluded: true, label: a.name });
+        marker.append(pin);
         map3d.current!.append(marker);
         overlays.current.push(marker);
       });
@@ -149,9 +150,10 @@ export const MapView = forwardRef<MapHandle, Props>(function MapView({ className
       const route = new google.maps.Polyline({ map: g, path: stops.map((s) => ({ lat: s.lat, lng: s.lng })), strokeOpacity: 0, icons: [{ icon: { path: "M 0,-1 0,1", strokeOpacity: 1, strokeColor: "#6B1D2A", strokeWeight: 4, scale: 3 }, offset: "0", repeat: "16px" }] });
       overlays.current.push({ remove: () => route.setMap(null) });
     }
-    stops.forEach((s, i) => {
-      const el = pinEl(s, i, i === active);
-      el.addEventListener("click", () => onPickRef.current?.(i));
+    const items: { s: Pin; big: boolean; alt: boolean; i: number }[] = [...alts.map((a) => ({ s: a, big: false, alt: true, i: -1 })), ...stops.map((s, i) => ({ s, big: i === active, alt: false, i }))];
+    items.forEach(({ s, big, alt, i }) => {
+      const el = pinEl(s, big, alt);
+      if (i >= 0) el.addEventListener("click", () => onPickRef.current?.(i));
       class Pin extends google.maps.OverlayView {
         onAdd() {
           this.getPanes()!.overlayMouseTarget.appendChild(el);
@@ -192,7 +194,7 @@ export const MapView = forwardRef<MapHandle, Props>(function MapView({ className
             el.appendChild(m);
             map3d.current = m;
             setState("ready");
-            await drawStops(last.current.stops, last.current.active);
+            await drawStops(last.current.stops, last.current.active, last.current.alts);
             return;
           } catch (e) {
             console.warn("3D map unavailable", e);
@@ -205,7 +207,7 @@ export const MapView = forwardRef<MapHandle, Props>(function MapView({ className
         if (dead) return;
         map2d.current = new Map(el, { center: { lat: at.lat, lng: at.lng }, zoom: zoomFor(at.range, at.lat, el.clientWidth), styles: PARCHMENT, disableDefaultUI: true, zoomControl: true, gestureHandling: "greedy", clickableIcons: false, backgroundColor: "#f3ece2" });
         setState("ready");
-        await drawStops(last.current.stops, last.current.active);
+        await drawStops(last.current.stops, last.current.active, last.current.alts);
       } catch (e) {
         console.warn("map failed", e);
         if (!dead) setState("off");
@@ -274,10 +276,11 @@ export const MapView = forwardRef<MapHandle, Props>(function MapView({ className
         // A slow half-turn around the stop while Savvy talks about it.
         m.flyCameraAround({ camera: { center: { lat: stop.lat, lng: stop.lng, altitude: 0 }, range: 750, tilt: 58, heading: m.heading ?? 0 }, durationMillis: 30000, repeatCount: 0.5 });
       },
-      setStops(stops, active) {
+      setStops(stops, active, alts = []) {
         last.current.stops = stops;
         last.current.active = active;
-        void drawStops(stops, active);
+        last.current.alts = alts;
+        void drawStops(stops, active, alts);
       },
     }),
     [drawStops],

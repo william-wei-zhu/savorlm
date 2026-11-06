@@ -3,7 +3,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* SavorLM: an evening tour ticket. Cream card stock by day, espresso by night,
-   burgundy for actions, gold only for hairlines and Michelin marks. Solid ink
+   burgundy for actions, gold only for hairlines and accents. Solid ink
    text everywhere (standard §3: no faded grays). */
 :root {
   --paper: #faf6f1;
@@ -469,4 +469,27 @@ h3 {
   background-image: linear-gradient(100deg, transparent 30%, rgba(201, 160, 99, 0.16) 50%, transparent 70%);
   background-size: 200% 100%;
   animation: sheen 1.8s linear infinite;
+}
+
+/* Other options for the active stop: small cream medallions. */
+.slm-pin-alt .slm-medal {
+  min-width: 2rem;
+  height: 2rem;
+  background: #faf6f1 !important;
+  color: #6b1d2a;
+  border: 2px solid #6b1d2a;
+  font-size: 0.85rem;
+}
+.slm-pin-alt .slm-name {
+  background: #faf6f1;
+  color: #1a1614;
+  border: 1px solid #6b1d2a;
+  font-size: 0.78rem;
+}
+.slm-pin-alt .slm-name {
+  display: none;
+}
+.slm-pin-alt:hover .slm-name,
+.slm-pin-alt:focus-visible .slm-name {
+  display: block;
 }

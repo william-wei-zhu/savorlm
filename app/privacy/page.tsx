@@ -7,8 +7,8 @@ export default function Privacy() {
   return (
     <PageShell title="Privacy and disclaimer">
       <Card title="Informational only">
-        <p>SavorLM is a demo for planning ideas. Hours, prices, ratings and Michelin distinctions can change or be wrong. Check with the restaurant before you go. Nothing here is professional advice.</p>
-        <p>Michelin distinctions come from the published Michelin Guide and may lag the latest edition. SavorLM is not affiliated with Michelin, Google, or any restaurant.</p>
+        <p>SavorLM is a demo for planning ideas. Hours, prices and ratings come from the web and can change or be wrong. Check with the place before you go. Nothing here is professional advice.</p>
+        <p>SavorLM is not affiliated with Google, any guide or publication, or any restaurant.</p>
       </Card>
       <Card title="What we keep">
         <p>No accounts. Your voice recordings are transcribed and never stored. Requests are sent to Gemini, Exa and TypeSafe to answer you. Search results are cached for a few hours to a few days so repeat questions are faster, then deleted automatically.</p>

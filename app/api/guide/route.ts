@@ -2,7 +2,7 @@ import { z } from "zod";
 import { guard } from "@/lib/server/guard";
 import { sameOrigin } from "@/lib/server/origin";
 import { runGuide } from "@/lib/server/guide";
-import { CITY_IDS } from "@/lib/michelin/types";
+import { CITY_IDS } from "@/lib/cities";
 import { sse } from "@/lib/guide/scene";
 
 export const maxDuration = 60;

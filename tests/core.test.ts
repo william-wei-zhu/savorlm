@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { km, hop, stopShot, walkMinutes, bearing } from "@/lib/guide/geo";
 import { badgeFrom, fitScore, MIN_P } from "@/lib/guide/checks";
-import { findByName, findSpots, SPINE } from "@/lib/michelin";
+import { CITIES, CITY_IDS, cityForTz } from "@/lib/cities";
+import { mergeMentions, normName, popularity, isRoundup } from "@/lib/guide/consensus";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { sse, sseParser, type SceneEvent } from "@/lib/guide/scene";
 import { cleanSpeech } from "@/lib/guide/speech";
 import { clientIp } from "@/lib/server/client-ip";
@@ -39,24 +42,64 @@ describe("Jev badges", () => {
   });
 });
 
-describe("Michelin spine", () => {
-  it("has every city loaded", () => {
-    expect(SPINE.sf.length).toBeGreaterThan(50);
-    expect(SPINE.paris.length).toBeGreaterThan(10);
+describe("cities", () => {
+  it("covers the 21 US cities and nothing abroad", () => {
+    expect(CITY_IDS.length).toBe(21);
+    expect(CITY_IDS).not.toContain("paris");
+    expect(CITY_IDS.every((c) => CITIES[c].tz.startsWith("America/"))).toBe(true);
   });
-  it("finds a restaurant by name, accents and case aside", () => {
-    expect(findByName("le bernardin", "nyc")?.distinction).toBe("3star");
-    expect(findByName("atelier crenn", null)?.city).toBe("sf");
+  it("defaults a browser time zone to a sensible city", () => {
+    expect(cityForTz("America/Los_Angeles")).toBe("sf");
+    expect(cityForTz("America/Phoenix")).toBe("phoenix");
+    expect(cityForTz("Europe/Paris")).toBe("nyc");
   });
-  it("filters by distinction and ranks stars first", () => {
-    const r = findSpots({ city: "sf", distinctions: ["3star"], limit: 3 });
-    expect(r.length).toBeGreaterThan(0);
-    expect(r.every((s) => s.distinction === "3star")).toBe(true);
-    const any = findSpots({ city: "nyc", limit: 5 });
-    expect(any[0].distinction).toBe("3star");
+});
+
+describe("web consensus", () => {
+  it("normalizes venue names", () => {
+    expect(normName("The Pink Door")).toBe(normName("Pink Door"));
+    expect(normName("Franklin Barbecue")).toBe("franklin barbecue");
+    expect(normName("Café Rouge Restaurant")).toBe("cafe rouge");
   });
-  it("falls back instead of returning nothing for an unknown cuisine", () => {
-    expect(findSpots({ city: "sf", cuisine: "martian fusion", limit: 2 }).length).toBe(2);
+  it("counts distinct independent sites, not pages, and not the venue's own site", () => {
+    const m = mergeMentions([
+      { name: "The Pink Door", area: "Pike Place", url: "https://seattle.eater.com/maps/best-seattle" },
+      { name: "Pink Door", area: "", url: "https://seattle.eater.com/maps/date-night" },
+      { name: "The Pink Door", area: "", url: "https://www.theinfatuation.com/seattle/guides/best" },
+      { name: "The Pink Door", area: "", url: "https://thepinkdoor.net/" },
+      { name: "Canlis", area: "", url: "https://www.theinfatuation.com/seattle/guides/best" },
+    ]);
+    expect(m[0].name).toBe("The Pink Door");
+    expect(m[0].mentions).toBe(2);
+    expect(m[0].urls.length).toBe(4);
+    expect(m[1].mentions).toBe(1);
+  });
+  it("ranks by mentions, a stated rating breaking ties", () => {
+    expect(popularity(3)).toBeGreaterThan(popularity(2, "4.9 Google"));
+    expect(popularity(2, "4.8")).toBeGreaterThan(popularity(2, "4.2"));
+  });
+  it("treats best-of lists as discovery, not venues", () => {
+    expect(isRoundup({ title: "The 18 Best Tacos in Austin", url: "https://x.com/a" })).toBe(true);
+    expect(isRoundup({ title: "Veracruz All Natural", url: "https://veracruztacos.com/" })).toBe(false);
+  });
+});
+
+describe("brand", () => {
+  it("never shows the word Michelin in the UI", () => {
+    const files: string[] = [];
+    const walk = (d: string) => {
+      for (const f of readdirSync(d)) {
+        const p = join(d, f);
+        if (statSync(p).isDirectory()) {
+          if (f !== "api") walk(p);
+        } else if (/\.(tsx|ts)$/.test(f)) files.push(p);
+      }
+    };
+    walk("app");
+    walk("components");
+    files.push("lib/brand.ts");
+    const hits = files.filter((f) => /michelin/i.test(readFileSync(f, "utf8")));
+    expect(hits).toEqual([]);
   });
 });
 

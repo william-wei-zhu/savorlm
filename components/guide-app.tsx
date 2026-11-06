@@ -8,13 +8,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronRight, Mic, Send, Volume2, VolumeX, RotateCcw, Settings } from "lucide-react";
-import { MapView, type MapHandle } from "./map-view";
+import { MapView, type MapHandle, type Pin } from "./map-view";
 import { Savvy } from "./savvy";
 import { Hop, StopTicket } from "./stop-card";
 import { audio } from "@/lib/audio/engine";
 import { Mic as MicRecorder, blobToBase64 } from "@/lib/audio/recorder";
 import { sseParser, type Pose, type SceneEvent, type StopCard } from "@/lib/guide/scene";
-import { CITIES, CITY_IDS, type CityId } from "@/lib/michelin/types";
+import { CITIES, CITY_IDS, REGIONS, cityForTz, type CityId } from "@/lib/cities";
+import { hop as hopBetween } from "@/lib/guide/geo";
 import { NAME, TAGLINE } from "@/lib/brand";
 import { cityShot } from "@/lib/guide/geo";
 
@@ -23,12 +24,28 @@ type Status = "idle" | "thinking" | "touring" | "listening" | "hearing";
 type Mood = "warm" | "excited" | "curious" | "cozy";
 
 const PROMPTS: Partial<Record<CityId | "default", string[]>> = {
-  default: ["Plan my anniversary night: a starred dinner, then cocktails nearby", "Best Bib Gourmand lunch that's open now", "A whole food day: coffee, lunch, a snack and a starred dinner"],
-  sf: ["Plan my anniversary night in North Beach: a starred dinner, then cocktails", "Omakase in San Francisco, then a dessert spot", "A cheerful Bib Gourmand lunch in the Mission"],
-  nyc: ["A three-star dinner in Manhattan, then a jazz bar after", "Best Bib Gourmand ramen in New York", "A food day in Brooklyn: bagels, pizza, and a starred dinner"],
-  paris: ["A food day in Paris: coffee, a Bib Gourmand lunch, and a starred dinner", "A romantic three-star dinner by the Seine, then a wine bar", "The best croissant in the Marais, then a bistro lunch"],
-  london: ["A starred dinner in Mayfair, then a cocktail bar", "Best Bib Gourmand lunch in Soho", "Sunday roast, then a dessert spot"],
-  dc: ["A starred dinner in Georgetown, then a rooftop bar", "Best Bib Gourmand brunch in DC", "A business dinner near the White House"],
+  default: ["A quick healthy salad near me", "The most famous tacos in town, then a cocktail bar", "A special-occasion dinner, then dessert"],
+  nyc: ["The most famous pizza slice in Manhattan", "An anniversary tasting menu, then a jazz bar", "A quick healthy lunch near Union Square"],
+  sf: ["A date night in North Beach: dinner, then cocktails", "The best burrito in the Mission", "A quick healthy salad in SoMa"],
+  la: ["Famous tacos in East LA, then a rooftop bar", "A quick healthy lunch in Santa Monica", "A big-night sushi dinner in Beverly Hills"],
+  sandiego: ["Fish tacos near the beach, then craft beer", "Brunch in Little Italy", "A special dinner in La Jolla"],
+  seattle: ["A quick healthy salad near Pike Place", "The best oysters in town, then a cocktail bar", "Famous teriyaki for a cheap lunch"],
+  portland: ["Food carts for lunch, then a brewery", "The most famous doughnuts and coffee", "A date-night dinner in the Pearl District"],
+  vegas: ["A big-night dinner on the Strip, then a speakeasy", "The best cheap eats off the Strip", "A famous buffet or brunch"],
+  phoenix: ["Fast casual lunch under $15 in Scottsdale", "The best Sonoran hot dogs", "A date night in Old Town Scottsdale"],
+  denver: ["Green chile and a local brewery", "A special dinner in LoHi, then cocktails", "A quick healthy lunch in RiNo"],
+  austin: ["Famous brisket for lunch, then a Rainey Street bar", "Breakfast tacos tomorrow morning", "A date-night dinner on South Congress"],
+  houston: ["The best Viet-Cajun crawfish", "Famous barbecue, then a cocktail bar", "A special dinner in River Oaks"],
+  dallas: ["Tex-Mex and margaritas in Deep Ellum", "The most famous steakhouse in town", "A quick healthy lunch in Uptown"],
+  chicago: ["Deep dish or tavern pizza, the most famous one", "A big-night dinner in the West Loop, then a cocktail bar", "A quick lunch near the Loop"],
+  minneapolis: ["The most famous Juicy Lucy", "A date night in the North Loop", "A cozy brewery and a casual dinner"],
+  nashville: ["Hot chicken, then live music and a nightcap", "A special dinner in The Gulch", "Biscuits for brunch in East Nashville"],
+  atlanta: ["The best fried chicken, then a rooftop bar", "A date night on the BeltLine", "A quick healthy lunch in Midtown"],
+  neworleans: ["Beignets, po'boys and a jazz bar", "A big-night Creole dinner in the French Quarter", "The most famous gumbo in town"],
+  miami: ["The best Cuban sandwich and cafecito", "A big-night dinner in Miami Beach, then cocktails", "A quick healthy lunch in Brickell"],
+  boston: ["The most famous lobster roll", "A date night in the South End", "A quick lunch near Faneuil Hall"],
+  philly: ["The cheesesteak locals actually love", "A BYOB date night in Center City", "A quick healthy lunch near Rittenhouse"],
+  dc: ["A business dinner near the White House", "The best brunch in Logan Circle", "A quick healthy lunch near Union Station"],
 };
 
 function voicePref(): boolean {
@@ -41,13 +58,14 @@ function voicePref(): boolean {
 
 function guessCity(): CityId {
   try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    if (tz === "America/Los_Angeles") return "sf";
-    return CITY_IDS.find((c) => CITIES[c].tz === tz) ?? "nyc";
+    return cityForTz(Intl.DateTimeFormat().resolvedOptions().timeZone);
   } catch {
     return "nyc";
   }
 }
+
+/** The option currently picked for a stop (Savvy's first unless the user chose another). */
+const pickOf = (s: StopCard, choice: Record<number, number>) => s.options[choice[s.index] ?? 0] ?? s.options[0];
 
 const words = (s: string) => s.split(/\s+/).filter(Boolean).length;
 const center = (c: CityId) => ({ lat: CITIES[c].center.latitude, lng: CITIES[c].center.longitude });
@@ -62,6 +80,8 @@ export function GuideApp() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [stops, setStops] = useState<StopCard[]>([]);
   const [active, setActive] = useState<number | null>(null);
+  const [choice, setChoice] = useState<Record<number, number>>({});
+  const choiceRef = useRef<Record<number, number>>({});
   const [title, setTitle] = useState("");
   const [input, setInput] = useState("");
   const [voice, setVoice] = useState(true);
@@ -127,13 +147,39 @@ export function GuideApp() {
     [gesture],
   );
 
-  const focusStop = useCallback((i: number) => {
-    const s = stopsRef.current[i];
-    if (!s) return;
-    setActive(i);
-    map.current?.setStops(stopsRef.current, i);
-    map.current?.fly({ lat: s.lat, lng: s.lng, altitude: 0, range: 750, tilt: 58, heading: 30, durationMs: 2200 }).then(() => map.current?.orbit(s));
+  /** Pins: each stop's current pick, plus the active stop's other options. */
+  const drawPins = useCallback((activeIdx: number | null) => {
+    const ch = choiceRef.current;
+    const stops: Pin[] = stopsRef.current.map((s, i) => ({ ...pickOf(s, ch), label: String(i + 1) }));
+    const act = activeIdx === null ? null : stopsRef.current[activeIdx];
+    const alts: Pin[] = act ? act.options.map((o, j) => ({ ...o, label: `${activeIdx! + 1}.${j + 1}` })).filter((_, j) => j !== (ch[act.index] ?? 0)) : [];
+    map.current?.setStops(stops, activeIdx, alts);
   }, []);
+
+  const focusStop = useCallback(
+    (i: number) => {
+      const s = stopsRef.current[i];
+      if (!s) return;
+      const o = pickOf(s, choiceRef.current);
+      setActive(i);
+      drawPins(i);
+      map.current?.fly({ lat: o.lat, lng: o.lng, altitude: 0, range: 750, tilt: 58, heading: 30, durationMs: 2200 }).then(() => map.current?.orbit(o));
+    },
+    [drawPins],
+  );
+
+  /** Make another option the pick for a stop; travel times follow. */
+  const choose = useCallback(
+    (stopIdx: number, j: number) => {
+      choiceRef.current = { ...choiceRef.current, [stopIdx]: j };
+      setChoice(choiceRef.current);
+      const ch = choiceRef.current;
+      stopsRef.current = stopsRef.current.map((s, i) => (i === 0 ? s : { ...s, hop: hopBetween(pickOf(stopsRef.current[i - 1], ch), pickOf(s, ch)) }));
+      setStops(stopsRef.current);
+      focusStop(stopIdx);
+    },
+    [focusStop],
+  );
 
   const send = useCallback(
     async (text: string) => {
@@ -150,6 +196,8 @@ export function GuideApp() {
       setTitle("");
       setStops([]);
       stopsRef.current = [];
+      choiceRef.current = {};
+      setChoice({});
       setActive(null);
       map.current?.setStops([], null);
       gesture("think", "think");
@@ -209,13 +257,13 @@ export function GuideApp() {
           stopsRef.current = [...stopsRef.current, e.stop];
           setStops(stopsRef.current);
           setActive(e.stop.index);
-          map.current?.setStops(stopsRef.current, e.stop.index);
+          drawPins(e.stop.index);
           gesture("look", "look");
           await map.current?.fly(e.shot);
           audio?.chime();
-          map.current?.orbit(e.stop);
-          picked.push(`${e.stop.name} (${e.stop.role})`);
-          speech = say(e.stop.line, e.stop.distinction ? "wow" : "point", id, "warm").then(() => {
+          map.current?.orbit(e.stop.options[0]);
+          picked.push(`${e.stop.options[0].name} (${e.stop.role})`);
+          speech = say(e.stop.line, e.stop.options[0].mentions >= 2 ? "wow" : "point", id, "warm").then(() => {
             if (id === run.current) gesture("think", "think");
           });
         } else if (e.t === "done") {
@@ -234,7 +282,7 @@ export function GuideApp() {
         setPose((p) => (p === "talk" || p === "think" || p === "look" ? "listen" : p));
       }
     },
-    [city, turns, say, unlock, gesture],
+    [city, turns, say, unlock, gesture, drawPins],
   );
 
   const listen = useCallback(async () => {
@@ -305,6 +353,8 @@ export function GuideApp() {
     setTurns([]);
     setStops([]);
     stopsRef.current = [];
+    choiceRef.current = {};
+    setChoice({});
     setTitle("");
     setActive(null);
     setStatus("idle");
@@ -320,11 +370,11 @@ export function GuideApp() {
   const lastUser = [...turns].reverse().find((t) => t.role === "user");
 
   return (
-    <div className="grid min-h-dvh grid-cols-[minmax(0,1fr)] lg:h-dvh lg:grid-cols-[minmax(25rem,32rem)_minmax(0,1fr)]">
+    <div className="grid min-h-dvh grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(25rem,32rem)_minmax(0,1fr)]">
       {intro && <Intro />}
 
       {/* The map with Savvy standing on it. */}
-      <section className="relative order-1 h-[52dvh] lg:order-2 lg:h-auto" aria-label="Map">
+      <section className="relative order-1 h-[52dvh] lg:sticky lg:top-0 lg:order-2 lg:h-dvh lg:self-start" aria-label="Map">
         <MapView ref={map} className="absolute inset-0" initial={center(city)} onPick={focusStop} />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end gap-1 p-2 pb-4 sm:gap-3 sm:p-6">
           <div className="savvy-stage pointer-events-auto w-40 shrink-0 sm:w-60 lg:w-72">
@@ -345,7 +395,7 @@ export function GuideApp() {
       </section>
 
       {/* The panel: a printed evening menu. */}
-      <section className="menu order-2 flex min-h-0 flex-col lg:order-1">
+      <section className="menu order-2 flex min-h-dvh flex-col lg:order-1">
         <header className="flex items-center gap-3 px-6 pb-3 pt-6">
           <div className="rounded-full border-2 border-gold p-1">
             <Image src="/savvy/avatar.webp" alt="" width={64} height={64} className="size-14 rounded-full bg-[#2a211d]" />
@@ -375,10 +425,14 @@ export function GuideApp() {
             </label>
             <div className="relative mt-1">
               <select id="city" value={city} onChange={(e) => setCity(e.target.value as CityId)} className="w-full cursor-pointer appearance-none rounded-xl border-2 border-gold bg-surface py-2 pl-3 pr-10 font-display text-[1.45rem] font-bold text-ink">
-                {CITY_IDS.map((c) => (
-                  <option key={c} value={c}>
-                    {CITIES[c].name}
-                  </option>
+                {REGIONS.map((r) => (
+                  <optgroup key={r} label={r}>
+                    {CITY_IDS.filter((c) => CITIES[c].region === r).map((c) => (
+                      <option key={c} value={c}>
+                        {CITIES[c].name}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
               <ChevronRight className="pointer-events-none absolute right-3 top-1/2 size-5 -translate-y-1/2 rotate-90 text-gold-text" aria-hidden />
@@ -407,7 +461,7 @@ export function GuideApp() {
               id="ask"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={busy ? "Savvy is on it..." : "A starred dinner, then a jazz bar..."}
+              placeholder={busy ? "Savvy is on it..." : "Tacos, then a cocktail bar..."}
               maxLength={500}
               className="min-w-0 flex-1 rounded-xl border-2 border-line bg-sunk px-3 py-3 text-[1.05rem] font-bold text-ink placeholder:text-ink-2 focus:border-gold"
             />
@@ -427,7 +481,7 @@ export function GuideApp() {
           </button>
         </form>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-5 pt-4">
+        <div className="flex-1 space-y-4 px-6 pb-5 pt-4">
           {lastUser && (
             <div className="flex justify-end">
               <p className="user-bubble max-w-[88%] px-4 py-2.5">{lastUser.text}</p>
@@ -446,9 +500,9 @@ export function GuideApp() {
             </div>
           )}
           {stops.map((s, i) => (
-            <div key={s.id}>
+            <div key={`${s.index}-${s.options[0]?.id}`}>
               {s.hop && i > 0 && <Hop hop={s.hop} />}
-              <StopTicket stop={s} active={active === i} onSelect={() => focusStop(i)} />
+              <StopTicket stop={s} chosen={choice[s.index] ?? 0} active={active === i} onSelect={() => focusStop(i)} onChoose={(j) => choose(i, j)} />
             </div>
           ))}
           {!turns.length && (

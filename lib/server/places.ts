@@ -47,3 +47,15 @@ export async function photoUri(placeId: string): Promise<string | null> {
     return ((await m.json()) as { photoUri?: string }).photoUri ?? null;
   });
 }
+
+/** Address -> coordinates via the Geocoding API (10k free a month; cheaper than Places for alternates). */
+export async function geocode(address: string): Promise<{ lat: number; lng: number; address: string } | null> {
+  if (!KEY()) return null;
+  return cached(cacheKey("geocode", address.toLowerCase()), 30 * 86400, async () => {
+    const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${KEY()}`, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return null;
+    const j = (await res.json()) as { status: string; results?: { formatted_address: string; geometry: { location: { lat: number; lng: number } } }[] };
+    const r = j.results?.[0];
+    return r ? { lat: r.geometry.location.lat, lng: r.geometry.location.lng, address: r.formatted_address } : null;
+  }).catch((e) => (console.warn("geocode failed", (e as Error).message), null));
+}

@@ -3,19 +3,19 @@
 </p>
 
 <h1 align="center">SavorLM</h1>
-<p align="center">Your raccoon guide to Michelin nights out. <a href="https://savorlm.com">savorlm.com</a></p>
+<p align="center">Your raccoon guide to the city's best bites. <a href="https://savorlm.com">savorlm.com</a></p>
 
-Tell Savvy what you're craving ("my anniversary in North Beach: a starred dinner, then cocktails"), by voice or by typing. He plans the evening around Michelin Guide restaurants and the best places nearby, then walks you through it on the map: he talks while the camera moves, every stop lands as a ticket with live hours, a calibrated fit check, and its sources.
+Tell Savvy what you're craving ("famous brisket for lunch, then a Rainey Street bar", or just "a quick healthy salad near Pike Place"), by voice or by typing. He finds the places people love most in 21 US cities and walks you through them on the map. Every stop comes with the top 3 to 5 options, live hours, a calibrated fit check, and the sources behind it.
 
 ## Why it's built this way
 
 | Decision | Why |
 | --- | --- |
-| **Store almost nothing.** A 230 KB Michelin "spine" (name, distinction, location) is the only restaurant data. | The previous version kept 6,700 scraped dishes in Postgres + pgvector. It went stale and cost money idle. Live search is fresher and free when nobody is using it. |
-| **Live data from Exa at request time** (hours, open now, ratings, menus, news). | One search call returns venue pages with hours and contact details, so Savvy can check a place is open before recommending it. Cached a few hours. |
-| **Fit claims checked by TypeSafe Jev**, not by the LLM. | "Date-night vibe 83%" is a calibrated yes/no over the sources. Below 60%, no badge. The language model never asserts a fit on its own. |
-| **A fixed pipeline, not a free-running agent loop**: plan, gather, judge, pick. | A known number of calls per tour, predictable cost, and the first stop streams in ~7 s while the rest load near it. |
-| **Michelin-first, open-world around it.** | Michelin is the trust signal; bars, coffee and dessert come from the open web near the first stop, in any city. |
+| **"Top spots" = web consensus.** Savvy reads best-of lists and local guides live and counts how many independent sites name each place. | Popular and famous is what people actually ask for, from a salad to a tasting menu. The count is explainable: "named by 9 guides". |
+| **Store nothing.** No restaurant database at all; Exa search at request time, cached a few hours. | The previous version kept 6,700 scraped dishes in Postgres. It went stale and cost money idle. |
+| **3 to 5 options per stop**, Savvy narrates his favorite. | One answer feels like a coin flip; a short ranked list is how people really choose. |
+| **Fit claims checked by TypeSafe Jev**, not by the LLM. | "Date-night vibe 83%" is a calibrated yes/no over the sources. Below 60%, no badge. |
+| **A fixed pipeline, not a free-running agent loop**: plan, discover, extract, consensus, judge, pick. | A known number of calls per tour, predictable cost, and the first stop streams while the rest load. |
 | **2D map by default, 3D on request**, with hard Google quota caps. | Same per-load price, but 3D has half the free tier. Caps keep the bill at $0. |
 
 ## Architecture
@@ -24,11 +24,12 @@ Tell Savvy what you're craving ("my anniversary in North Beach: a starred dinner
 browser ──(text or voice)──▶ /api/hear (Gemini transcription)
    │
    └──▶ /api/guide  (server-sent events: say · fly · stop · done)
-          1. plan    Gemini 3.8 Flash, structured output
-          2. gather  Michelin spine filter ─┬─▶ Exa search (live evidence)
-                                            └─▶ Exa search near the last stop (open world)
-          3. judge   TypeSafe Jev: yes / no / unknown + confidence per check
-          4. pick    Gemini: one place per stop, spoken line, facts from evidence only
+          1. plan      Gemini 3.8 Flash, structured output
+          2. discover  Exa: best-of roundups + venue pages, per stop
+          3. extract   Gemini Flash-Lite: which venues each page names
+          4. consensus count independent sites per venue (pure, tested)
+          5. judge     Exa evidence per venue + TypeSafe Jev yes/no/unknown
+          6. pick      Gemini Flash-Lite: 3 to 5 ranked options, spoken line
    │
    ├──▶ /api/tts    Gemini TTS, streamed PCM (Savvy starts talking in ~0.5 s)
    └──▶ /api/photo  Google Places photo redirect (nothing stored)

@@ -16,6 +16,8 @@ export const CHECKS = {
   outdoor: { label: "Outdoor seating", ask: "Does this place have outdoor seating, a patio or a terrace?" },
   latenight: { label: "Open late", ask: "Is this place open late (serving after 10pm on most nights)?" },
   walkin: { label: "Walk-ins welcome", ask: "Does this place accept walk-ins (no reservation needed)?" },
+  affordable: { label: "Fits your budget", ask: "Is this place within the user's stated budget?" },
+  healthy: { label: "Healthy options", ask: "Does this place offer fresh, healthy options such as salads, bowls or lighter dishes?" },
 } as const;
 
 export type CheckId = keyof typeof CHECKS;
