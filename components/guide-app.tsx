@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Check, ChevronLeft, ChevronRight, Mic, Send, Share2, Square, Volume2, VolumeX, RotateCcw, Settings } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Keyboard, Mic, Send, Share2, Sparkles, Square, Volume2, VolumeX, RotateCcw, Settings } from "lucide-react";
 import { MapView, type MapHandle, type Pin } from "./map-view";
 import { Savvy } from "./savvy";
 import { Hop, StopTicket } from "./stop-card";
@@ -77,6 +77,8 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   // The home page opens on the city chooser (BikeSim-style); a city URL skips it.
   const [landing, setLanding] = useState(!initialCity);
   const cityRef = useRef<CityId>(initialCity ?? "nyc");
+  const [greet, setGreet] = useState(0); // bumps when a city is picked from the chooser
+  const askRef = useRef<HTMLTextAreaElement>(null);
   const landingRef = useRef(!initialCity);
   const hushed = useRef(-1); // run id the user silenced with "Stop talking"
   const talking = useRef<Promise<void>>(Promise.resolve()); // what Savvy is saying now
@@ -153,8 +155,10 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
       setLanding(false);
       map.current?.setStops([], null);
       map.current?.fly(cityShot(center(c)));
-      setCaption(`${CITIES[c].name}! Tell me what you're craving: a quick bite, a big night, anything.`);
-      setPose("wave");
+      // The tap is a user gesture: unlock audio now so Savvy can greet out loud.
+      unlocked.current = true;
+      void audio?.unlock().catch(() => {});
+      setGreet((g) => g + 1);
     }
     try {
       window.history.pushState(null, "", `/${CITIES[c].slug}`);
@@ -228,6 +232,18 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
     const alts: Pin[] = act ? act.options.map((o, j) => ({ ...o, label: `${activeIdx! + 1}.${j + 1}` })).filter((_, j) => j !== (ch[act.index] ?? 0)) : [];
     map.current?.setStops(stops, activeIdx, alts);
   }, []);
+
+  // Onboarding greeting after a city is picked: Savvy says what to do next.
+  useEffect(() => {
+    if (!greet) return;
+    const c = cityRef.current;
+    const id = ++run.current;
+    void say(`${CITIES[c].name}! Tap one of my ideas, type what you're craving, or tap Talk and just tell me.`, "wave", id, "excited").then(() => {
+      if (id === run.current) gesture("listen", "listen");
+    });
+    // Only when a city is picked; say and gesture are stable callbacks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [greet]);
 
   const drawPinsRef = useRef(drawPins);
   useEffect(() => {
@@ -526,6 +542,8 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   };
 
   const busy = status === "thinking" || status === "touring" || status === "hearing";
+  /** A city is open and nothing has been asked yet: show Savvy's three ways to start. */
+  const onboarding = !landing && !turns.length && (status === "idle" || status === "touring") && !stops.length;
   const prompts = PROMPTS[city] ?? PROMPTS.default!;
   const lastUser = [...turns].reverse().find((t) => t.role === "user");
 
@@ -543,6 +561,26 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           <div className="bubble pointer-events-auto mb-6 max-w-[34rem] px-4 pb-3 pt-4 sm:mb-10 sm:px-5 sm:pb-4 sm:pt-5 lg:mb-16" aria-live="polite">
             <span className="kicker name-tag">Savvy</span>
             <p className="text-[1.02rem] leading-snug sm:text-[1.2rem]">{caption}</p>
+            {onboarding && (
+              <div className="rise mt-2.5 flex flex-wrap gap-2">
+                <button type="button" onClick={() => void listen()} className="btn btn-primary py-1.5">
+                  <Mic className="size-4" aria-hidden /> Talk to me
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    askRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    askRef.current?.focus({ preventScroll: true });
+                  }}
+                  className="btn border-2 border-ink py-1.5 hover:bg-sunk"
+                >
+                  <Keyboard className="size-4" aria-hidden /> Type it
+                </button>
+                <button type="button" onClick={() => void send(prompts[0])} className="btn border-2 border-ink py-1.5 text-left hover:bg-sunk">
+                  <Sparkles className="size-4 shrink-0" aria-hidden /> {prompts[0]}
+                </button>
+              </div>
+            )}
             {speaking && (
               <button type="button" onClick={stopTalking} className="btn mt-2 border-2 border-ink py-1 text-[0.95rem] hover:bg-sunk">
                 <Square className="size-3.5 fill-current" aria-hidden /> Stop talking
@@ -627,18 +665,20 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
 
         {/* The ask: the first thing in the menu, by voice or by typing. */}
         <form
-          className="mx-6 mt-3 rounded-2xl border-2 border-gold bg-surface p-3 shadow-[var(--shadow)]"
+          key={`ask-${city}`}
+          className={`mx-6 mt-3 rounded-2xl border-2 border-gold bg-surface p-3 shadow-[var(--shadow)] ${onboarding ? "ask-glow" : ""}`}
           onSubmit={(e) => {
             e.preventDefault();
             void send(input);
           }}
         >
           <label htmlFor="ask" className="kicker block px-1 text-gold-text">
-            What are you craving?
+            {onboarding ? "What are you craving? Type it or tap Talk" : "What are you craving?"}
           </label>
           <div className="mt-2 flex items-end gap-2">
             <textarea
               id="ask"
+              ref={askRef}
               rows={2}
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -701,7 +741,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           ))}
           {!turns.length && (
             <div className="pt-1">
-              <p className="kicker text-gold-text">Ask Savvy for</p>
+              <p className="kicker text-gold-text">Or tap an idea to start</p>
               <ul className="mt-1 border-t border-line">
                 {prompts.map((p) => (
                   <li key={p}>

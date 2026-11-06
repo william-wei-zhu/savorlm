@@ -532,3 +532,13 @@ h3 {
   height: 100%;
   filter: drop-shadow(0 6px 8px rgba(40, 10, 10, 0.4));
 }
+
+/* Onboarding: the ask box glows three times when a city opens, then rests
+   (standard §4: no periodic nagging). */
+@keyframes ask-glow {
+  0%, 100% { box-shadow: var(--shadow), 0 0 0 0 rgba(240, 201, 142, 0); }
+  50% { box-shadow: var(--shadow), 0 0 0 6px rgba(240, 201, 142, 0.55); }
+}
+.ask-glow {
+  animation: ask-glow 1.4s ease-in-out 0.6s 3;
+}
