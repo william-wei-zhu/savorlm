@@ -8,6 +8,10 @@ SavorLM v2: **Savvy**, a cute plush raccoon food guide (beret, chef jacket, guid
 - **Top spots = web consensus**, not awards: the places many independent best-of lists and local guides name. Any craving, any budget; fine dining welcome but not the point.
 - **Never show "Michelin" (or awards) in the UI or in Savvy's lines** unless the user says it first. A test (`tests/core.test.ts`, "brand") fails if the word appears in `app/`, `components/` or `lib/brand.ts`. The original Michelin spine was removed.
 - **Every stop shows 3 to 5 options**, best first; Savvy narrates his top pick, the user can tap another to make it the pick.
+- **One URL per city**: `savorlm.com/<slug>` (`app/[city]/page.tsx`, prerendered for all 21 via `generateStaticParams`; unknown slug = `notFound()` because `dynamicParams` is unavailable with Cache Components; `export const instant = false` since the picker switches cities with `pushState`, not router navigation). Short forms (`nyc`, `sf`, `la`, `dc`, `philly`, `vegas`, `scottsdale`, ...) are permanent redirects from `SLUG_ALIASES` in `next.config.ts`. `app/sitemap.ts` + `app/robots.ts` list them.
+- **Landing = city chooser** (BikeSim-style, William 2026-11-06): `/` opens "Where are we eating?" with the time-zone city as a wide "Near you" tile, then every city by region, each with a food badge (`public/cities/<slug>.webp`, made by `art/cities.py`: plush style, cream felt disc, never blue because of the chroma key). The map shows the US with badge pins; tapping a tile or pin goes to that city's URL. "All cities" goes back.
+- **Savvy narrates the top three** options per stop in one line (max 65 words); a "Stop talking" button under his bubble silences him for the rest of that answer (captions continue), the speaker button mutes for good.
+- **No 3D map** (removed 2026-11-06, William: unnecessary). The browser key is restricted to `maps-backend` only and `tile.googleapis.com` is disabled in `savorlm-app`.
 - **US cities only** (`lib/cities.ts`): NYC, Boston, Philadelphia, DC, Atlanta, Nashville, New Orleans, Miami, Austin, Houston, Dallas, Chicago, Minneapolis, Denver, Phoenix & Scottsdale, Las Vegas, SF, LA, San Diego, Seattle, Portland. Grouped by region in the picker.
 
 ## Commands
@@ -42,13 +46,12 @@ Scene events (`lib/guide/scene.ts`): `say`, `fly`, `stop` (StopCard = role, line
 `/api/hear` (Gemini `gemini-3.5-flash-lite` transcription, temp 0; recordings never stored), `/api/tts` (streamed PCM from `gemini-3.8-flash-lite-tts`, voice **Sadachbia**, mood tags single adverbs only). Mic VAD + WAV encoder (`lib/audio/recorder.ts`) and PCM engine (`lib/audio/engine.ts`) ported from HiBenny.
 
 ### The map (`components/map-view.tsx`)
-- **2D by default** (cost): styled raster "parchment" map (business POIs hidden, no mapId so styles apply), custom `OverlayView` pins: numbered burgundy medallions per stop (active one gold), small cream medallions `2.2, 2.3...` for the active stop's other options (labels on hover only, they overlapped), dashed route, eased "flights".
-- **"Fly in 3D"** switches to `Map3DElement` (SATELLITE, `flyCameraTo` / `flyCameraAround`, `RELATIVE_TO_MESH` + `drawsWhenOccluded` markers).
-- Pricing (2026-11-03 list): 2D Dynamic Maps $7/1k, 10k free/mo; 3D Immersive Maps $7/1k, 5k free; Places Photos Enterprise (1k free); Text Search Pro 5k free; Geocoding 10k free. **Hard daily quota caps** (gcloud beta quotas; needed `--allow-high-percentage-quota-decrease --allow-quota-decrease-below-usage`): 3D loads 150, 2D loads 300, Places GetPlace 30, GetPhotoMedia 30, SearchText 150, Geocoding 300. Over a cap the UI degrades (no photo, geocoded pin), never a bill.
+- Styled 2D raster "parchment" map only (business POIs hidden, no mapId so styles apply), custom `OverlayView` pins: numbered burgundy medallions per stop (active one gold), small cream medallions `2.2, 2.3...` for the active stop's other options (labels on hover), city badge pins on the landing, dashed route, eased center+zoom "flights".
+- Pricing (2026-11-03 list): Dynamic Maps $7/1k, 10k free/mo; Places Photos Enterprise (1k free); Text Search Pro 5k free; Geocoding 10k free. **Hard daily quota caps** (gcloud beta quotas; needed `--allow-high-percentage-quota-decrease --allow-quota-decrease-below-usage`): map loads 300, Places GetPlace 30, GetPhotoMedia 30, SearchText 150, Geocoding 300. Over a cap the UI degrades (no photo, geocoded pin), never a bill.
 
 ### Savvy (the rig)
 - Art: Gemini image from `art/candidates/savvy-ref.png` (chibi plush raccoon with beret; William asked for cuter on 2026-11-06). 12 poses + edit-variants talk2, talk-blink, listen-blink, wave2, dance2 sharing their base crop box (`art/key.py`). Served from `public/savvy/` (renamed from /guide/ to bust caches).
-- `components/savvy.tsx` (HiBenny's rig): mood loops, voice bob/tilt, pop, lip flap, blinks, two-frame wave/dance cycles, tap = giggle + laugh. Lines open with a gesture then talk; binoculars during flights; `wow` when the pick is a local favorite (2+ guides), `point` otherwise; `dance` on the outro.
+- `components/savvy.tsx` (HiBenny's rig): mood loops, voice bob/tilt, pop, lip flap, blinks, two-frame wave/dance cycles, tap = giggle + laugh. Lines open with a gesture then talk; binoculars while the map moves; `wow` when the pick is a local favorite (2+ guides), `point` otherwise; `dance` on the outro.
 - Stands on an espresso medallion with a gold ring (`.savvy-stage`) so he reads on the cream map.
 
 ## Design

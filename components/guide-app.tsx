@@ -7,14 +7,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronRight, Mic, Send, Volume2, VolumeX, RotateCcw, Settings } from "lucide-react";
+import { ChevronLeft, ChevronRight, Mic, Send, Square, Volume2, VolumeX, RotateCcw, Settings } from "lucide-react";
 import { MapView, type MapHandle, type Pin } from "./map-view";
 import { Savvy } from "./savvy";
 import { Hop, StopTicket } from "./stop-card";
 import { audio } from "@/lib/audio/engine";
 import { Mic as MicRecorder, blobToBase64 } from "@/lib/audio/recorder";
 import { sseParser, type Pose, type SceneEvent, type StopCard } from "@/lib/guide/scene";
-import { CITIES, CITY_IDS, REGIONS, cityForTz, type CityId } from "@/lib/cities";
+import { CITIES, CITY_IDS, REGIONS, US_VIEW, cityForTz, cityIcon, type CityId } from "@/lib/cities";
+import { CityChooser } from "./city-chooser";
 import { hop as hopBetween } from "@/lib/guide/geo";
 import { NAME, TAGLINE } from "@/lib/brand";
 import { cityShot } from "@/lib/guide/geo";
@@ -70,12 +71,16 @@ const pickOf = (s: StopCard, choice: Record<number, number>) => s.options[choice
 const words = (s: string) => s.split(/\s+/).filter(Boolean).length;
 const center = (c: CityId) => ({ lat: CITIES[c].center.latitude, lng: CITIES[c].center.longitude });
 
-export function GuideApp() {
+export function GuideApp({ initialCity }: { initialCity?: CityId }) {
   const map = useRef<MapHandle>(null);
-  const [city, setCity] = useState<CityId>("sf");
+  const [city, setCity] = useState<CityId>(initialCity ?? "nyc");
+  // The home page opens on the city chooser (BikeSim-style); a city URL skips it.
+  const [landing, setLanding] = useState(!initialCity);
+  const landingRef = useRef(!initialCity);
+  const hushed = useRef(-1); // run id the user silenced with "Stop talking"
   const [pose, setPose] = useState<Pose>("wave");
   const [speaking, setSpeaking] = useState(false);
-  const [caption, setCaption] = useState("Hi, I'm Savvy! Tell me what you're craving and I'll plan the whole evening.");
+  const [caption, setCaption] = useState(initialCity ? "Hi, I'm Savvy! Tell me what you're craving and I'll plan the whole evening." : "Hi, I'm Savvy! Pick a city and I'll find the places locals love.");
   const [status, setStatus] = useState<Status>("idle");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [stops, setStops] = useState<StopCard[]>([]);
@@ -101,7 +106,8 @@ export function GuideApp() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setVoice(v);
     voiceRef.current = v;
-    setCity(guessCity());
+    // A city URL (savorlm.com/miami) wins; the home page guesses from the time zone.
+    if (!initialCity) setCity(guessCity());
     const t = setTimeout(() => setIntro(false), 2900);
     // After the hello wave, Savvy settles into listening.
     const w = setTimeout(() => setPose((p) => (p === "wave" ? "listen" : p)), 5200);
@@ -109,10 +115,56 @@ export function GuideApp() {
       clearTimeout(t);
       clearTimeout(w);
     };
+  }, [initialCity]);
+
+  /** City badges on the US map while choosing. */
+  useEffect(() => {
+    if (!landing) return;
+    const t = setTimeout(() => map.current?.setStops(CITY_IDS.map((c) => ({ name: CITIES[c].name, lat: CITIES[c].center.latitude, lng: CITIES[c].center.longitude, label: "", icon: cityIcon(c) })), null), 50);
+    return () => clearTimeout(t);
+  }, [landing]);
+
+  /** Picking a city moves to its own URL without reloading (shareable links). */
+  const pickCity = useCallback((c: CityId) => {
+    setCity(c);
+    if (landingRef.current) {
+      landingRef.current = false;
+      setLanding(false);
+      map.current?.setStops([], null);
+      map.current?.fly(cityShot(center(c)));
+      setCaption(`${CITIES[c].name}! Tell me what you're craving: a quick bite, a big night, anything.`);
+      setPose("wave");
+    }
+    try {
+      window.history.pushState(null, "", `/${CITIES[c].slug}`);
+      document.title = `${NAME} ${CITIES[c].name}: ${TAGLINE}`;
+    } catch {}
+  }, []);
+
+  // Back / forward between city URLs.
+  useEffect(() => {
+    const onPop = () => {
+      const slug = window.location.pathname.replace(/^\/+|\/+$/g, "");
+      if (!slug) {
+        landingRef.current = true;
+        setLanding(true);
+        setCaption("Where to next? Pick a city and I'll find the places locals love.");
+        map.current?.fly({ ...US_VIEW, altitude: 0, tilt: 0, heading: 0, durationMs: 1800 });
+        document.title = `${NAME}: ${TAGLINE}`;
+        return;
+      }
+      const c = CITY_IDS.find((x) => CITIES[x].slug === slug);
+      if (c) {
+        setCity(c);
+        document.title = `${NAME} ${CITIES[c].name}: ${TAGLINE}`;
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
 
   useEffect(() => {
-    map.current?.fly(cityShot(center(city)));
+    if (!landingRef.current) map.current?.fly(cityShot(center(city)));
   }, [city]);
 
   const unlock = useCallback(async () => {
@@ -134,8 +186,8 @@ export function GuideApp() {
       if (!text || id !== run.current) return;
       setCaption(text);
       gesture(opener, "talk");
-      if (!voiceRef.current || !audio) {
-        await new Promise((r) => setTimeout(r, Math.max(1800, words(text) * 300)));
+      if (!voiceRef.current || !audio || hushed.current === id) {
+        await new Promise((r) => setTimeout(r, hushed.current === id ? 900 : Math.max(1800, words(text) * 300)));
         return;
       }
       setSpeaking(true);
@@ -163,7 +215,7 @@ export function GuideApp() {
       const o = pickOf(s, choiceRef.current);
       setActive(i);
       drawPins(i);
-      map.current?.fly({ lat: o.lat, lng: o.lng, altitude: 0, range: 750, tilt: 58, heading: 30, durationMs: 2200 }).then(() => map.current?.orbit(o));
+      void map.current?.fly({ lat: o.lat, lng: o.lng, altitude: 0, range: 750, tilt: 58, heading: 30, durationMs: 2200 });
     },
     [drawPins],
   );
@@ -261,7 +313,6 @@ export function GuideApp() {
           gesture("look", "look");
           await map.current?.fly(e.shot);
           audio?.chime();
-          map.current?.orbit(e.stop.options[0]);
           picked.push(`${e.stop.options[0].name} (${e.stop.role})`);
           speech = say(e.stop.line, e.stop.options[0].mentions >= 2 ? "wow" : "point", id, "warm").then(() => {
             if (id === run.current) gesture("think", "think");
@@ -336,6 +387,13 @@ export function GuideApp() {
     }
   }, [send, status, unlock, gesture]);
 
+  /** Silence Savvy for the rest of this answer (captions keep going). The mute button turns voice off for good. */
+  const stopTalking = () => {
+    hushed.current = run.current;
+    audio?.stopVoice();
+    setSpeaking(false);
+  };
+
   const toggleVoice = () => {
     const v = !voice;
     setVoice(v);
@@ -375,7 +433,7 @@ export function GuideApp() {
 
       {/* The map with Savvy standing on it. */}
       <section className="relative order-1 h-[52dvh] lg:sticky lg:top-0 lg:order-2 lg:h-dvh lg:self-start" aria-label="Map">
-        <MapView ref={map} className="absolute inset-0" initial={center(city)} onPick={focusStop} />
+        <MapView ref={map} className="absolute inset-0" initial={landing ? US_VIEW : center(city)} onPick={(i) => (landingRef.current ? pickCity(CITY_IDS[i]) : focusStop(i))} />
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex items-end gap-1 p-2 pb-3 sm:gap-3 sm:p-4 lg:absolute lg:p-6">
           <div className="savvy-stage pointer-events-auto w-28 shrink-0 sm:w-40 lg:w-56 xl:w-64 2xl:w-72">
             <Savvy pose={pose} speaking={speaking} className="h-auto w-full" onPoke={() => !speaking && gesture("laugh", "listen", 1300)} />
@@ -383,6 +441,11 @@ export function GuideApp() {
           <div className="bubble pointer-events-auto mb-6 max-w-[34rem] px-4 pb-3 pt-4 sm:mb-10 sm:px-5 sm:pb-4 sm:pt-5 lg:mb-16" aria-live="polite">
             <span className="kicker name-tag">Savvy</span>
             <p className="text-[1.02rem] leading-snug sm:text-[1.2rem]">{caption}</p>
+            {speaking && (
+              <button type="button" onClick={stopTalking} className="btn mt-2 border-2 border-ink py-1 text-[0.95rem] hover:bg-sunk">
+                <Square className="size-3.5 fill-current" aria-hidden /> Stop talking
+              </button>
+            )}
             {(status === "thinking" || status === "hearing") && (
               <span className="mt-1.5 flex gap-1.5" aria-label="Savvy is thinking">
                 {[0, 1, 2].map((i) => (
@@ -418,13 +481,28 @@ export function GuideApp() {
           </div>
         </div>
 
+        {landing ? (
+          <div className="flex-1 px-6 pb-8 pt-5">
+            <h2 className="text-[2rem] leading-tight">Where are we eating?</h2>
+            <p className="mb-5 mt-2 text-ink-2">Pick a city. Then tell Savvy what you&apos;re craving, from a quick salad to a big night out, and he&apos;ll find the places locals love.</p>
+            <CityChooser near={city} onPick={pickCity} />
+          </div>
+        ) : (
+          <>
         <div className="flex items-end gap-3 px-6 pb-2 pt-4">
           <div className="min-w-0 flex-1">
             <label htmlFor="city" className="kicker text-gold-text">
               Tonight in
             </label>
+            <button type="button" onClick={() => {
+                reset();
+                window.history.pushState(null, "", "/");
+                window.dispatchEvent(new PopStateEvent("popstate"));
+              }} className="ml-3 inline-flex items-center gap-1 text-[0.9rem] font-bold text-gold-text underline underline-offset-2">
+              <ChevronLeft className="size-4" aria-hidden /> All cities
+            </button>
             <div className="relative mt-1">
-              <select id="city" value={city} onChange={(e) => setCity(e.target.value as CityId)} className="w-full cursor-pointer appearance-none rounded-xl border-2 border-gold bg-surface py-2 pl-3 pr-10 font-display text-[1.45rem] font-bold text-ink">
+              <select id="city" value={city} onChange={(e) => pickCity(e.target.value as CityId)} className="w-full cursor-pointer appearance-none rounded-xl border-2 border-gold bg-surface py-2 pl-3 pr-10 font-display text-[1.45rem] font-bold text-ink">
                 {REGIONS.map((r) => (
                   <optgroup key={r} label={r}>
                     {CITY_IDS.filter((c) => CITIES[c].region === r).map((c) => (
@@ -524,6 +602,9 @@ export function GuideApp() {
           )}
         </div>
 
+
+          </>
+        )}
 
         <footer className="flex flex-wrap items-center gap-x-4 gap-y-1 px-6 pb-5 text-[0.9rem]">
           <a href="https://www.linkedin.com/in/william-wei-zhu/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">

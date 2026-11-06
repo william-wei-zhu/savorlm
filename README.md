@@ -16,7 +16,8 @@ Tell Savvy what you're craving ("famous brisket for lunch, then a Rainey Street 
 | **3 to 5 options per stop**, Savvy narrates his favorite. | One answer feels like a coin flip; a short ranked list is how people really choose. |
 | **Fit claims checked by TypeSafe Jev**, not by the LLM. | "Date-night vibe 83%" is a calibrated yes/no over the sources. Below 60%, no badge. |
 | **A fixed pipeline, not a free-running agent loop**: plan, discover, extract, consensus, judge, pick. | A known number of calls per tour, predictable cost, and the first stop streams while the rest load. |
-| **2D map by default, 3D on request**, with hard Google quota caps. | Same per-load price, but 3D has half the free tier. Caps keep the bill at $0. |
+| **One URL per city** (savorlm.com/miami) and a city chooser landing page. | Shareable, linkable, indexable; the landing shows every city with a food badge. |
+| **A styled 2D map** with hard Google quota caps. | The cheapest Maps SKU; caps keep the bill at $0. |
 
 ## Architecture
 
@@ -39,7 +40,7 @@ Firestore: short-lived cache + per-IP / global daily budgets (TTL deletes both)
 
 ## Stack
 
-Next.js 16 on Vercel · Gemini (planning, narration, voice, transcription) · Exa · TypeSafe Jev · Google Maps JS (2D + photorealistic 3D) and Places · Firestore. Savvy's art is generated with Gemini image and animated with a frame rig (gestures, lip flap, blinks, two-frame cycles) that responds to his own voice loudness.
+Next.js 16 on Vercel · Gemini (planning, narration, voice, transcription) · Exa · TypeSafe Jev · Google Maps JS and Places · Firestore. Savvy's art is generated with Gemini image and animated with a frame rig (gestures, lip flap, blinks, two-frame cycles) that responds to his own voice loudness.
 
 ## Run it
 

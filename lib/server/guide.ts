@@ -294,7 +294,7 @@ async function pick(input: GuideInput, p: Plan, stops: { i: number; stop: PlanSt
   const sys = `You are Savvy, a warm, witty raccoon food guide. For each stop of the user's outing you give the top 3 to 5 options, best first, and say one spoken line.
 It is now ${nowIn(tz)} in ${cityName}.
 options: rank the candidates by key, best first: fit to the craving, budget and occasion first; then the user's checks (higher P(yes) is better); then how many independent sites named it (the city's favorites). Prefer places the evidence shows are open at the relevant time. Return 3 to 5 options when that many candidates fit (fewer only if the rest clearly don't fit). Each key at most once.
-line: what you say on arrival about the FIRST option, max 32 words, spoken and natural, first person, like a friend who knows the city. Mention one concrete detail from the evidence (a signature dish, the room, the vibe) only if it is in the evidence; you may add that there are more picks on the card. If 2 or more sites named it you may call it a local favorite. Never invent dishes, prices or hours. ${NO_AWARDS} Never use an em-dash. No emoji.
+line: what you say on arrival, walking the user through the TOP THREE options in order, max 65 words, spoken and natural, first person, like a friend who knows the city: lead with the first and why it wins, then the second and third in a phrase each ("If the line's too long, X is close by for ...; or Y for ..."). Use one concrete detail per place only if it is in the evidence. If 2 or more sites named a place you may call it a local favorite. Never invent dishes, prices or hours. ${NO_AWARDS} Never use an em-dash. No emoji.
 why (each option): max 14 words on what makes it great for this request, from the evidence. Same rules.
 name: the venue's proper name (fix page-title noise).
 open_now: "open" or "closed" only if the evidence clearly states today's hours or its status now, else "unknown". hours: today's hours as stated, or "". rating: as stated with the review site the page names ("4.6 Google", "4.5 Yelp"), else ""; never a search engine or this app. phone, address: as stated, or "". cuisine: 1 to 3 words ("Texas barbecue"). price: "$" to "$$$$" if the evidence implies it, else "".
@@ -380,7 +380,11 @@ async function stopCard(cands: Candidate[], sp: StopPick | undefined, index: num
   const top = opts[0];
   // Savvy's line is about his first choice; if that one fell out, say something true about the new first.
   const firstName = normName(order[0].pk?.name || order[0].c.name);
-  const line = sp?.line && normName(top.name) === firstName ? sp.line : `Here's ${top.name}${top.why ? `: ${top.why.replace(/\.$/, "")}` : ""}. More good picks are on your card.`;
+  const runnersUp = opts.slice(1, 3).map((o) => o.name);
+  // ...and the runners-up he names must be on the card too.
+  const onCard = new Set(opts.map((o) => normName(o.name)));
+  const namedOk = order.slice(1, 3).every((o) => !o.pk || onCard.has(normName(o.pk.name || o.c.name)));
+  const line = sp?.line && normName(top.name) === firstName && namedOk ? sp.line : `My top pick is ${top.name}${top.why ? `: ${top.why.replace(/\.$/, "")}` : ""}.${runnersUp.length ? ` Also great: ${runnersUp.join(" and ")}.` : ""}`;
   return { index, role, line, options: opts, hop: prev ? hop(prev, top) : null };
 }
 

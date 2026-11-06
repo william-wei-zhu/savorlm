@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { km, hop, stopShot, walkMinutes, bearing } from "@/lib/guide/geo";
 import { badgeFrom, fitScore, MIN_P } from "@/lib/guide/checks";
-import { CITIES, CITY_IDS, cityForTz } from "@/lib/cities";
+import { CITIES, CITY_IDS, SLUG_ALIASES, cityBySlug, cityForTz } from "@/lib/cities";
 import { mergeMentions, normName, popularity, isRoundup } from "@/lib/guide/consensus";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -47,6 +47,17 @@ describe("cities", () => {
     expect(CITY_IDS.length).toBe(21);
     expect(CITY_IDS).not.toContain("paris");
     expect(CITY_IDS.every((c) => CITIES[c].tz.startsWith("America/"))).toBe(true);
+  });
+  it("gives every city a unique kebab-case URL, and aliases point at real ones", () => {
+    const slugs = CITY_IDS.map((c) => CITIES[c].slug);
+    expect(new Set(slugs).size).toBe(slugs.length);
+    expect(slugs.every((s) => /^[a-z]+(-[a-z]+)*$/.test(s))).toBe(true);
+    expect(cityBySlug("miami")).toBe("miami");
+    expect(cityBySlug("paris")).toBeNull();
+    for (const [from, to] of Object.entries(SLUG_ALIASES)) {
+      expect(slugs).toContain(to);
+      expect(slugs).not.toContain(from);
+    }
   });
   it("defaults a browser time zone to a sensible city", () => {
     expect(cityForTz("America/Los_Angeles")).toBe("sf");

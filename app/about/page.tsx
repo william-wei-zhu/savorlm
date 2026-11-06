@@ -11,7 +11,7 @@ export default function About() {
       </Card>
       <Card title="How he finds the top spots">
         <p>For every stop Savvy reads the web live: local best-of lists, food guides and the places&apos; own pages, through Exa search. He counts how many independent sites name each place. The ones many guides agree on rise to the top, and each ticket says how many guides named it.</p>
-        <p>You get the top three to five options for every stop. Savvy narrates his favorite and you can tap any other to make it the pick.</p>
+        <p>You get the top three to five options for every stop. Savvy talks you through the top three (tap Stop talking any time) and you can tap any option to make it the pick.</p>
         <p>Fit claims are checked by TypeSafe Jev, a model that answers yes or no with a calibrated confidence. A badge such as &quot;Date-night vibe 83%&quot; appears only when Jev says yes with at least 60% confidence from the sources. Every ticket links its sources.</p>
       </Card>
       <Card title="What it&apos;s built with">
