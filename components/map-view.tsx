@@ -212,7 +212,7 @@ export const MapView = forwardRef<MapHandle, Props>(function MapView({ className
       )}
       {state === "off" && (
         <div className="absolute inset-0 grid place-items-center p-6 text-center">
-          <p className="font-bold">The map could not load here. Savvy can still plan your evening; open any stop in Google Maps from its card.</p>
+          <p className="font-bold">The map could not load here. Savvy can still find your top 4; open any pick in Google Maps from its card.</p>
         </div>
       )}
     </div>

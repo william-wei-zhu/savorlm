@@ -1,20 +1,8 @@
 "use client";
 
-import { Footprints, CarTaxiFront, MapPin, Phone, CalendarCheck, Star, ShieldCheck, Heart, ChevronRight } from "lucide-react";
+import { MapPin, Phone, CalendarCheck, Star, ShieldCheck, Heart, ChevronRight } from "lucide-react";
 import { photoSrc, type Option, type StopCard as Stop } from "@/lib/guide/scene";
 import { Photo } from "./photo";
-
-export function Hop({ hop }: { hop: NonNullable<Stop["hop"]> }) {
-  const Icon = hop.mode === "walk" ? Footprints : CarTaxiFront;
-  return (
-    <div className="flex items-center justify-center gap-2 py-1 text-ink-2">
-      <Icon className="size-5" strokeWidth={2} aria-hidden />
-      <span className="font-bold">
-        {hop.minutes} min {hop.mode === "walk" ? "walk" : "ride"}
-      </span>
-    </div>
-  );
-}
 
 function reserveUrl(o: Option) {
   return o.website || `https://www.google.com/search?q=${encodeURIComponent(`${o.name} ${o.address} reservations`)}`;

@@ -1,22 +1,21 @@
 "use client";
 
 // The SavorLM experience: Savvy stands on the map, the conversation and the
-// tour tickets live in the side panel (a printed evening menu). A small
-// "director" plays the scene script from /api/guide in order: Savvy speaks
-// while the camera moves, each stop lands as a pin and a ticket.
+// picks live in the side panel (a printed evening menu). A small "director"
+// plays the scene script from /api/guide in order: Savvy speaks while the
+// camera moves, then the top 4 land as pins and a ticket.
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Check, ChevronLeft, ChevronRight, Keyboard, Mic, Send, Share2, Sparkles, Square, Volume2, VolumeX, RotateCcw, Settings } from "lucide-react";
 import { MapView, type MapHandle, type Pin } from "./map-view";
 import { Savvy } from "./savvy";
-import { Hop, StopTicket } from "./stop-card";
+import { StopTicket } from "./stop-card";
 import { audio } from "@/lib/audio/engine";
 import { Mic as MicRecorder, blobToBase64 } from "@/lib/audio/recorder";
 import { sseParser, type Pose, type SceneEvent, type SharedList, type StopCard } from "@/lib/guide/scene";
 import { CITIES, CITY_IDS, REGIONS, US_VIEW, cityForTz, cityIcon, type CityId } from "@/lib/cities";
 import { CityChooser } from "./city-chooser";
-import { hop as hopBetween } from "@/lib/guide/geo";
 import { NAME, TAGLINE } from "@/lib/brand";
 import { cityShot } from "@/lib/guide/geo";
 
@@ -25,25 +24,25 @@ type Status = "idle" | "thinking" | "touring" | "listening" | "hearing";
 type Mood = "warm" | "excited" | "curious" | "cozy";
 
 const PROMPTS: Partial<Record<CityId | "default", string[]>> = {
-  default: ["A quick healthy salad near me", "The most famous tacos in town, then a cocktail bar", "A special-occasion dinner, then dessert"],
-  nyc: ["The most famous pizza slice in Manhattan", "An anniversary tasting menu, then a jazz bar", "A quick healthy lunch near Union Square"],
-  sf: ["A date night in North Beach: dinner, then cocktails", "The best burrito in the Mission", "A quick healthy salad in SoMa"],
-  la: ["Famous tacos in East LA, then a rooftop bar", "A quick healthy lunch in Santa Monica", "A big-night sushi dinner in Beverly Hills"],
-  sandiego: ["Fish tacos near the beach, then craft beer", "Brunch in Little Italy", "A special dinner in La Jolla"],
-  seattle: ["A quick healthy salad near Pike Place", "The best oysters in town, then a cocktail bar", "Famous teriyaki for a cheap lunch"],
-  portland: ["Food carts for lunch, then a brewery", "The most famous doughnuts and coffee", "A date-night dinner in the Pearl District"],
-  vegas: ["A big-night dinner on the Strip, then a speakeasy", "The best cheap eats off the Strip", "A famous buffet or brunch"],
+  default: ["A quick healthy salad near me", "The most famous tacos in town", "A special-occasion dinner"],
+  nyc: ["The most famous pizza slice in Manhattan", "An anniversary tasting menu", "A quick healthy lunch near Union Square"],
+  sf: ["A date-night dinner in North Beach", "The best burrito in the Mission", "A quick healthy salad in SoMa"],
+  la: ["Famous tacos in East LA", "A quick healthy lunch in Santa Monica", "A big-night sushi dinner in Beverly Hills"],
+  sandiego: ["Fish tacos near the beach", "Brunch in Little Italy", "A special dinner in La Jolla"],
+  seattle: ["A quick healthy salad near Pike Place", "The best oysters in town", "Famous teriyaki for a cheap lunch"],
+  portland: ["The best food carts for lunch", "The most famous doughnuts and coffee", "A date-night dinner in the Pearl District"],
+  vegas: ["A big-night dinner on the Strip", "The best cheap eats off the Strip", "A famous buffet or brunch"],
   phoenix: ["Fast casual lunch under $15 in Scottsdale", "The best Sonoran hot dogs", "A date night in Old Town Scottsdale"],
-  denver: ["Green chile and a local brewery", "A special dinner in LoHi, then cocktails", "A quick healthy lunch in RiNo"],
-  austin: ["Famous brisket for lunch, then a Rainey Street bar", "Breakfast tacos tomorrow morning", "A date-night dinner on South Congress"],
-  houston: ["The best Viet-Cajun crawfish", "Famous barbecue, then a cocktail bar", "A special dinner in River Oaks"],
+  denver: ["The best green chile in town", "A special dinner in LoHi", "A quick healthy lunch in RiNo"],
+  austin: ["Famous brisket for lunch", "Breakfast tacos tomorrow morning", "A date-night dinner on South Congress"],
+  houston: ["The best Viet-Cajun crawfish", "The most famous barbecue", "A special dinner in River Oaks"],
   dallas: ["Tex-Mex and margaritas in Deep Ellum", "The most famous steakhouse in town", "A quick healthy lunch in Uptown"],
-  chicago: ["Deep dish or tavern pizza, the most famous one", "A big-night dinner in the West Loop, then a cocktail bar", "A quick lunch near the Loop"],
-  minneapolis: ["The most famous Juicy Lucy", "A date night in the North Loop", "A cozy brewery and a casual dinner"],
-  nashville: ["Hot chicken, then live music and a nightcap", "A special dinner in The Gulch", "Biscuits for brunch in East Nashville"],
-  atlanta: ["The best fried chicken, then a rooftop bar", "A date night on the BeltLine", "A quick healthy lunch in Midtown"],
-  neworleans: ["Beignets, po'boys and a jazz bar", "A big-night Creole dinner in the French Quarter", "The most famous gumbo in town"],
-  miami: ["The best Cuban sandwich and cafecito", "A big-night dinner in Miami Beach, then cocktails", "A quick healthy lunch in Brickell"],
+  chicago: ["Deep dish or tavern pizza, the most famous one", "A big-night dinner in the West Loop", "A quick lunch near the Loop"],
+  minneapolis: ["The most famous Juicy Lucy", "A date night in the North Loop", "A cozy casual dinner"],
+  nashville: ["The best hot chicken", "A special dinner in The Gulch", "Biscuits for brunch in East Nashville"],
+  atlanta: ["The best fried chicken", "A date night on the BeltLine", "A quick healthy lunch in Midtown"],
+  neworleans: ["The best po'boys", "A big-night Creole dinner in the French Quarter", "The most famous gumbo in town"],
+  miami: ["The best Cuban sandwich and cafecito", "A big-night dinner in Miami Beach", "A quick healthy lunch in Brickell"],
   boston: ["The most famous lobster roll", "A date night in the South End", "A quick lunch near Faneuil Hall"],
   philly: ["The cheesesteak locals actually love", "A BYOB date night in Center City", "A quick healthy lunch near Rittenhouse"],
   dc: ["A business dinner near the White House", "The best brunch in Logan Circle", "A quick healthy lunch near Union Station"],
@@ -85,7 +84,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   const userTook = useRef(0); // bumps when the user taps an option (takes over the voice)
   const [pose, setPose] = useState<Pose>("wave");
   const [speaking, setSpeaking] = useState(false);
-  const [caption, setCaption] = useState(initialTour ? `Here's the list: ${initialTour.title}. Tap any pick and I'll tell you about it.` : initialCity ? "Hi, I'm Savvy! Tell me what you're craving and I'll plan the whole evening." : "Hi, I'm Savvy! Pick a city and I'll find the places locals love.");
+  const [caption, setCaption] = useState(initialTour ? `Here's the list: ${initialTour.title}. Tap any pick and I'll tell you about it.` : initialCity ? "Hi, I'm Savvy! Tell me what you're craving and I'll find the top 4 spots." : "Hi, I'm Savvy! Pick a city and I'll find the places locals love.");
   const [status, setStatus] = useState<Status>("idle");
   const [turns, setTurns] = useState<Turn[]>(initialTour ? [{ role: "user", text: initialTour.message }] : []);
   const [stops, setStops] = useState<StopCard[]>(initialTour?.stops ?? []);
@@ -265,14 +264,11 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
     [drawPins],
   );
 
-  /** Show an option as the stop's pick (card, pins, map); travel times follow. */
+  /** Show an option as the stop's pick (card, pins, map). */
   const showOption = useCallback(
     (stopIdx: number, j: number) => {
       choiceRef.current = { ...choiceRef.current, [stopIdx]: j };
       setChoice(choiceRef.current);
-      const ch = choiceRef.current;
-      stopsRef.current = stopsRef.current.map((s, i) => (i === 0 ? s : { ...s, hop: hopBetween(pickOf(stopsRef.current[i - 1], ch), pickOf(s, ch)) }));
-      setStops(stopsRef.current);
       focusStop(stopIdx);
     },
     [focusStop],
@@ -407,7 +403,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           gesture("look", "look");
           await map.current?.fly(e.shot);
           audio?.chime();
-          picked.push(`${e.stop.options[0].name} (${e.stop.role})`);
+          picked.push(e.stop.options[0].name);
           // One option at a time: Savvy introduces the top three in turn, the
           // card and map following him; a tap on any option takes over.
           const stop = e.stop;
@@ -429,7 +425,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           await settle();
           if (e.text) await say(e.text, "dance", id, "cozy");
           if (id === run.current && picked.length) gesture("cheer", "listen", 1900);
-          setTurns((t) => [...t, { role: "guide", text: picked.length ? `I picked ${picked.join(", then ")}.` : lastLine }]);
+          setTurns((t) => [...t, { role: "guide", text: picked.length ? `My top pick: ${picked[0]}.` : lastLine }]);
         } else if (e.t === "error") {
           await settle();
           await say(e.text, "listen", id, "warm");
@@ -710,7 +706,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
                   void send(input);
                 }
               }}
-              placeholder={busy ? "Savvy is on it..." : "Tacos, then a cocktail bar..."}
+              placeholder={busy ? "Savvy is on it..." : "The best tacos in town..."}
               maxLength={500}
               className="min-h-[4.6rem] min-w-0 flex-1 resize-y rounded-xl border-2 border-line bg-sunk px-3 py-2.5 text-[1.05rem] font-bold leading-snug text-ink placeholder:text-ink-2 focus:border-gold"
             />
@@ -738,7 +734,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           )}
           {(title || stops.length > 0) && (
             <div className="rise text-center">
-              <p className="kicker text-gold-text">Your evening</p>
+              <p className="kicker text-gold-text">Savvy&apos;s top 4</p>
               <h2 className="mt-1 text-[1.75rem]">{title || "Savvy's picks"}</h2>
               {shareId ? (
                 <button type="button" onClick={() => void shareList()} className="btn mt-2 border-2 border-gold py-1.5 text-ink hover:bg-sunk">
@@ -760,7 +756,6 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           )}
           {stops.map((s, i) => (
             <div key={`${s.index}-${s.options[0]?.id}`}>
-              {s.hop && i > 0 && <Hop hop={s.hop} />}
               <StopTicket stop={s} chosen={choice[s.index] ?? 0} active={active === i} onSelect={() => focusStop(i)} onChoose={(j) => choose(i, j)} />
             </div>
           ))}

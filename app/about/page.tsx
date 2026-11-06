@@ -10,8 +10,8 @@ export default function About() {
         <p>Savvy is a raccoon food guide for 21 US cities. Tell him what you&apos;re craving, a quick salad, famous tacos, or a big anniversary dinner, by voice or by typing. He finds the places people love most and walks you through them on the map.</p>
       </Card>
       <Card title="How he finds the top spots">
-        <p>For every stop Savvy reads the web live: local best-of lists, food guides and the places&apos; own pages, through Exa search. He counts how many independent sites name each place. The ones many guides agree on rise to the top, and each ticket says how many guides named it.</p>
-        <p>Every stop has four picks: Savvy&apos;s top pick and three more, in a fixed list. He talks you through them one at a time (tap Stop talking any time), and tapping any pick shows it and has him tell you about it.</p>
+        <p>For every request Savvy reads the web live: local best-of lists, food guides and the places&apos; own pages, through Exa search. He counts how many independent sites name each place. The ones many guides agree on rise to the top, and each ticket says how many guides named it.</p>
+        <p>Every answer is one list of four picks: Savvy&apos;s top pick and three more, in a fixed order. No itinerary, just the four best places for what you asked. He talks you through them one at a time (tap Stop talking any time), and tapping any pick shows it and has him tell you about it.</p>
         <p>Every city has its own page (savorlm.com/austin), and every finished list gets its own link you can share with friends.</p>
         <p>Fit claims are checked by TypeSafe Jev, a model that answers yes or no with a calibrated confidence. A badge such as &quot;Date-night vibe 83%&quot; appears only when Jev says yes with at least 60% confidence from the sources. Every ticket links its sources.</p>
       </Card>

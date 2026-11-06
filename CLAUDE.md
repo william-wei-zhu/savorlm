@@ -41,13 +41,13 @@ Raw art (`art/poses/`, `art/cities/`, most of `art/candidates/`) is gitignored; 
 - **No restaurant data is stored.** Everything comes from Exa at request time (`lib/server/exa.ts`, `type: "lite"`, highlights), cached in Firestore 3 to 24 h. Exa "Places" results arrive as venue pages whose highlights hold hours/address/phone (no structured place entity on `lite`, probed 2026-11-06).
 
 ### The guide pipeline (`lib/server/guide.ts`, streamed by `/api/guide` as SSE)
-1. **plan** (Gemini `gemini-3.8-flash`, structured): kind tour/answer/chat, city, area, 1 to 4 stops (role, craving, tier special/any/quick, budget `none|$..$$$$`, area, named), up to 3 checks, an opening line. (An empty string in a schema enum is a 400: use "none".)
+1. **plan** (Gemini `gemini-3.8-flash`, structured): kind tour/answer/chat, city, area, exactly 1 stop (role, craving, tier special/any/quick, budget `none|$..$$$$`, area, named), up to 3 checks, an opening line. (An empty string in a schema enum is a 400: use "none".)
 2. **discover** (2 Exa lite searches per stop): "most popular best-loved {craving} {restaurants|bars|spots} in {area, city}" (wants roundups) + "{craving} {restaurant|bar} {area, city}" (venue pages).
 3. **extract** (`gemini-3.5-flash-lite`, temp 0, one call per phase): every venue each page names that fits the stop, with its page index.
 4. **consensus** (`lib/guide/consensus.ts`, pure, tested): `normName`, `mergeMentions` counts distinct independent domains per venue (a venue's own site never counts), `popularity`. Top 5 go on.
 5. **evidence** (1 Exa search per venue: hours, menu, rating) + **judge** (TypeSafe Jev `jev-1.14.0`, yes/no/unknown with calibrated probabilities; badge only for yes >= 0.6; `affordable` asks with the stop's budget; cached 7 days).
 6. **pick** (`gemini-3.5-flash-lite`, structured): per stop 4 ranked options (fit first, then Jev checks, then consensus), each with a `why` (card text) and a spoken `intro` (names the place in its first sentence, max 32 words), plus facts (open_now/hours/rating/phone/address/cuisine/price) and source urls; a stop-level `line` is only a caption fallback. Code tops up to 4 options from the ranked candidates if the model returns fewer.
-The first stop is picked alone so the camera can move while the rest are found near it (phase 2 discovers near stop 1's area). Measured 2026-11-06: first stop ~9 to 10 s, 2-stop tour ~20 s (phase 2 runs while Savvy narrates stop 1). The pick step on `gemini-3.8-flash` took ~7 s, on flash-lite ~4 s, hence `GEMINI_PICK_MODEL` defaults to flash-lite.
+Measured 2026-11-06: the list of 4 lands in ~9 to 10 s. The pick step on `gemini-3.8-flash` took ~7 s, on flash-lite ~4 s, hence `GEMINI_PICK_MODEL` defaults to flash-lite.
 - Locating options (`toOption`): the top option per stop uses Places Text Search (`places.id, location, address, mapsUri, websiteUri, photos`: place id, maps link and its photo name in one call); the rest use the Geocoding API from their address (10k free/mo). Every lookup falls back to geocoding (name + area + city), so the Places daily cap never drops an option. If the first choice or a named runner-up could not be located, the caption line is rebuilt from the options actually on the card.
 - A place appears in one stop only (dedupe by candidate key and by normalized final name).
 - All outside text is wrapped (`<web_data>`, `<user_said>`) and declared untrusted.
@@ -66,6 +66,9 @@ Scene events (`lib/guide/scene.ts`): `city` (the plan's city), `say`, `fly`, `st
 - Art: Gemini image from `art/candidates/savvy-ref.png` (chibi plush raccoon with beret; William asked for cuter on 2026-11-06). 12 poses + edit-variants talk2, talk-blink, listen-blink, wave2, dance2 sharing their base crop box (`art/key.py`). Served from `public/savvy/` (renamed from /guide/ to bust caches).
 - `components/savvy.tsx` (HiBenny's rig): mood loops, voice bob/tilt, pop, lip flap, blinks, two-frame wave/dance cycles, tap = giggle + laugh. Lines open with a gesture then talk; binoculars while the map moves; `wow` when the pick is a local favorite (2+ guides), `point` otherwise; `dance` on the outro.
 - Stands on an espresso medallion with a gold ring (`.savvy-stage`) so he reads on the cream map.
+
+## One list, never an itinerary
+William 2026-11-06: every request returns exactly ONE stop card with 4 picks (top pick + 3). The plan prompt allows only 1 stop (a multi-part ask uses the first food craving), `plan()` slices to 1, the multi-stop phase 2 was deleted, and the UI has no walk/ride hops. Suggested prompts never say "then ...". Older shared lists with several stops still render, without hops.
 
 ## Design
 - An evening menu: the side panel (`.menu`) is always espresso + gold in both themes (deliberate). Fraunces / Figtree 600 / DM Mono. Component classes live in `@layer components` so utilities can override them.
