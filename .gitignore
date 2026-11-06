@@ -47,3 +47,4 @@ next-env.d.ts
 !/art/candidates/savvy-ref.png
 /.playwright-mcp/
 !.env.example
+/art/cities/

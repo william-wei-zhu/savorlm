@@ -17,6 +17,8 @@ Tell Savvy what you're craving ("famous brisket for lunch, then a Rainey Street 
 | **Fit claims checked by TypeSafe Jev**, not by the LLM. | "Date-night vibe 83%" is a calibrated yes/no over the sources. Below 60%, no badge. |
 | **A fixed pipeline, not a free-running agent loop**: plan, discover, extract, consensus, judge, pick. | A known number of calls per tour, predictable cost, and the first stop streams while the rest load. |
 | **One URL per city** (savorlm.com/miami) and a city chooser landing page. | Shareable, linkable, indexable; the landing shows every city with a food badge. |
+| **Every list gets a link** (savorlm.com/t/…), saved by the server exactly as generated. | Sharing a top-four list with friends is the natural next step; replaying it costs nothing. |
+| **Savvy talks about one pick at a time**, and switches when you tap another. | A voice guide works best focused on the place on screen. |
 | **A styled 2D map** with hard Google quota caps. | The cheapest Maps SKU; caps keep the bill at $0. |
 
 ## Architecture
@@ -24,7 +26,7 @@ Tell Savvy what you're craving ("famous brisket for lunch, then a Rainey Street 
 ```
 browser ──(text or voice)──▶ /api/hear (Gemini transcription)
    │
-   └──▶ /api/guide  (server-sent events: say · fly · stop · done)
+   └──▶ /api/guide  (server-sent events: city · say · fly · stop · done · share)
           1. plan      Gemini 3.8 Flash, structured output
           2. discover  Exa: best-of roundups + venue pages, per stop
           3. extract   Gemini Flash-Lite: which venues each page names
@@ -35,7 +37,9 @@ browser ──(text or voice)──▶ /api/hear (Gemini transcription)
    ├──▶ /api/tts    Gemini TTS, streamed PCM (Savvy starts talking in ~0.5 s)
    └──▶ /api/photo  Google Places photo redirect (nothing stored)
 
-Firestore: short-lived cache + per-IP / global daily budgets (TTL deletes both)
+/<city>   prerendered city pages      /t/<id>   a saved list, replayed with no new search
+
+Firestore: short-lived cache, per-IP / global daily budgets, saved lists (TTL deletes all three)
 ```
 
 ## Stack
@@ -50,5 +54,7 @@ npm install
 npm run dev
 npm test
 ```
+
+Saved lists and usage budgets need `FIREBASE_SERVICE_ACCOUNT_B64`; without it, dev runs with an in-memory cache and no share links. Art scripts live in `art/` (see CLAUDE.md).
 
 Built by [William Zhu](https://www.linkedin.com/in/william-wei-zhu/).
