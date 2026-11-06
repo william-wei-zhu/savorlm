@@ -645,7 +645,6 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-[1.4rem] font-extrabold max-[380px]:text-[1.2rem] leading-tight tracking-tight lg:text-[2rem] lg:leading-none">{NAME}</h1>
-            <p className="mt-1.5 hidden text-[0.95rem] leading-snug text-gold-text [text-wrap:balance] lg:block">{TAGLINE}</p>
           </div>
           <button type="button" onClick={toggleVoice} className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk lg:size-11" aria-label={voice ? "Mute Savvy" : "Unmute Savvy"} title={voice ? "Mute Savvy" : "Unmute Savvy"}>
             {voice ? <Volume2 className="size-5" /> : <VolumeX className="size-5" />}
