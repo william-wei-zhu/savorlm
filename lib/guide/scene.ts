@@ -2,6 +2,7 @@
 // line. The client plays events in order, so Savvy talks while the camera
 // flies. Shared by server and client (types only + a tiny encoder).
 import type { Shot } from "./geo";
+import type { CityId } from "../cities";
 
 export type Pose = "wave" | "listen" | "talk" | "think" | "point" | "wow" | "cheer" | "taste" | "laugh" | "clap" | "dance" | "look";
 
@@ -58,9 +59,13 @@ export type StopCard = {
 
 export type SceneEvent =
   | { t: "say"; text: string; pose: Pose }
+  /** The city the plan is for (may differ from the one on screen). */
+  | { t: "city"; city: CityId }
   | { t: "fly"; shot: Shot; label?: string }
   | { t: "stop"; stop: StopCard; shot: Shot }
   | { t: "done"; text: string; title: string }
+  /** The finished list was saved: share it at /t/<id>. */
+  | { t: "share"; id: string }
   | { t: "error"; text: string };
 
 export function sse(e: SceneEvent): string {
@@ -87,3 +92,6 @@ export function sseParser(onEvent: (e: SceneEvent) => void) {
     }
   };
 }
+
+/** A saved, shareable list (savorlm.com/t/<id>). */
+export type SharedList = { id: string; city: CityId; message: string; title: string; stops: StopCard[] };

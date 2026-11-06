@@ -2,6 +2,9 @@ import { z } from "zod";
 import { guard } from "@/lib/server/guard";
 import { sameOrigin } from "@/lib/server/origin";
 import { runGuide } from "@/lib/server/guide";
+import { saveTour } from "@/lib/server/tours";
+import type { StopCard } from "@/lib/guide/scene";
+import type { CityId } from "@/lib/cities";
 import { CITY_IDS } from "@/lib/cities";
 import { sse } from "@/lib/guide/scene";
 
@@ -30,9 +33,18 @@ export async function POST(req: Request) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
+        const stops: StopCard[] = [];
+        let city: CityId | null = body.city as CityId | null;
         for await (const e of runGuide({ message: body.message, history: body.history, city: body.city as never, signal: req.signal })) {
           controller.enqueue(enc.encode(sse(e)));
           console.log(`guide +${Date.now() - t0}ms ${e.t}`);
+          if (e.t === "stop") stops.push(e.stop);
+          if (e.t === "city") city = e.city;
+          // Save the finished list so it can be shared (exactly what was generated).
+          if (e.t === "done" && stops.length && city) {
+            const id = await saveTour({ city, message: body.message, title: e.title || "Savvy's picks", stops }).catch((err) => (console.warn("saveTour", err.message), null));
+            if (id) controller.enqueue(enc.encode(sse({ t: "share", id })));
+          }
         }
       } catch (e) {
         console.error("guide failed", e);

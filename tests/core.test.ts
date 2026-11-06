@@ -7,6 +7,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { sse, sseParser, type SceneEvent } from "@/lib/guide/scene";
 import { cleanSpeech } from "@/lib/guide/speech";
+import { newTourId, TOUR_ID } from "@/lib/server/tours";
 import { clientIp } from "@/lib/server/client-ip";
 import { sameOrigin } from "@/lib/server/origin";
 
@@ -138,6 +139,15 @@ describe("scene stream", () => {
     const feed = sseParser((e) => got.push(e));
     for (let i = 0; i < wire.length; i += 7) feed(wire.slice(i, i + 7));
     expect(got).toEqual(events);
+  });
+});
+
+describe("shared lists", () => {
+  it("makes unguessable 10-character link ids that pass the route check", () => {
+    const ids = new Set(Array.from({ length: 500 }, () => newTourId()));
+    expect(ids.size).toBe(500);
+    for (const id of ids) expect(TOUR_ID.test(id)).toBe(true);
+    expect(TOUR_ID.test("../etc")).toBe(false);
   });
 });
 

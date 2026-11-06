@@ -410,6 +410,7 @@ export async function* runGuide(input: GuideInput): AsyncGenerator<SceneEvent> {
       if (!cityId) cityName = a.name || p.area;
     }
   }
+  if (cityId) yield { t: "city", city: cityId };
   yield { t: "say", text: p.say, pose: p.stops.length ? "think" : "talk" };
   if (!p.stops.length) {
     yield { t: "done", text: "", title: "" };

@@ -7,13 +7,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Mic, Send, Square, Volume2, VolumeX, RotateCcw, Settings } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Mic, Send, Share2, Square, Volume2, VolumeX, RotateCcw, Settings } from "lucide-react";
 import { MapView, type MapHandle, type Pin } from "./map-view";
 import { Savvy } from "./savvy";
 import { Hop, StopTicket } from "./stop-card";
 import { audio } from "@/lib/audio/engine";
 import { Mic as MicRecorder, blobToBase64 } from "@/lib/audio/recorder";
-import { sseParser, type Pose, type SceneEvent, type StopCard } from "@/lib/guide/scene";
+import { sseParser, type Pose, type SceneEvent, type SharedList, type StopCard } from "@/lib/guide/scene";
 import { CITIES, CITY_IDS, REGIONS, US_VIEW, cityForTz, cityIcon, type CityId } from "@/lib/cities";
 import { CityChooser } from "./city-chooser";
 import { hop as hopBetween } from "@/lib/guide/geo";
@@ -71,25 +71,28 @@ const pickOf = (s: StopCard, choice: Record<number, number>) => s.options[choice
 const words = (s: string) => s.split(/\s+/).filter(Boolean).length;
 const center = (c: CityId) => ({ lat: CITIES[c].center.latitude, lng: CITIES[c].center.longitude });
 
-export function GuideApp({ initialCity }: { initialCity?: CityId }) {
+export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; initialTour?: SharedList }) {
   const map = useRef<MapHandle>(null);
   const [city, setCity] = useState<CityId>(initialCity ?? "nyc");
   // The home page opens on the city chooser (BikeSim-style); a city URL skips it.
   const [landing, setLanding] = useState(!initialCity);
+  const cityRef = useRef<CityId>(initialCity ?? "nyc");
   const landingRef = useRef(!initialCity);
   const hushed = useRef(-1); // run id the user silenced with "Stop talking"
   const talking = useRef<Promise<void>>(Promise.resolve()); // what Savvy is saying now
   const userTook = useRef(0); // bumps when the user taps an option (takes over the voice)
   const [pose, setPose] = useState<Pose>("wave");
   const [speaking, setSpeaking] = useState(false);
-  const [caption, setCaption] = useState(initialCity ? "Hi, I'm Savvy! Tell me what you're craving and I'll plan the whole evening." : "Hi, I'm Savvy! Pick a city and I'll find the places locals love.");
+  const [caption, setCaption] = useState(initialTour ? `Here's the list: ${initialTour.title}. Tap any pick and I'll tell you about it.` : initialCity ? "Hi, I'm Savvy! Tell me what you're craving and I'll plan the whole evening." : "Hi, I'm Savvy! Pick a city and I'll find the places locals love.");
   const [status, setStatus] = useState<Status>("idle");
-  const [turns, setTurns] = useState<Turn[]>([]);
-  const [stops, setStops] = useState<StopCard[]>([]);
+  const [turns, setTurns] = useState<Turn[]>(initialTour ? [{ role: "user", text: initialTour.message }] : []);
+  const [stops, setStops] = useState<StopCard[]>(initialTour?.stops ?? []);
   const [active, setActive] = useState<number | null>(null);
   const [choice, setChoice] = useState<Record<number, number>>({});
   const choiceRef = useRef<Record<number, number>>({});
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(initialTour?.title ?? "");
+  const [shareId, setShareId] = useState<string | null>(initialTour?.id ?? null);
+  const [copied, setCopied] = useState(false);
   const [input, setInput] = useState("");
   const [voice, setVoice] = useState(true);
   const [micLv, setMicLv] = useState(0);
@@ -97,7 +100,7 @@ export function GuideApp({ initialCity }: { initialCity?: CityId }) {
   const mic = useRef<MicRecorder | null>(null);
   const run = useRef(0);
   const abort = useRef<AbortController | null>(null);
-  const stopsRef = useRef<StopCard[]>([]);
+  const stopsRef = useRef<StopCard[]>(initialTour?.stops ?? []);
   const voiceRef = useRef(true);
   const unlocked = useRef(false);
   const poseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -118,6 +121,22 @@ export function GuideApp({ initialCity }: { initialCity?: CityId }) {
       clearTimeout(w);
     };
   }, [initialCity]);
+
+  useEffect(() => {
+    cityRef.current = city;
+  }, [city]);
+
+  // A shared list: pins and camera on its first stop once the map is up.
+  useEffect(() => {
+    if (!initialTour?.stops.length) return;
+    const t = setTimeout(() => {
+      const first = initialTour.stops[0].options[0];
+      setActive(0);
+      drawPinsRef.current?.(0);
+      void map.current?.fly({ lat: first.lat, lng: first.lng, altitude: 0, range: 750, tilt: 58, heading: 30, durationMs: 1800 });
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [initialTour]);
 
   /** City badges on the US map while choosing. */
   useEffect(() => {
@@ -210,6 +229,11 @@ export function GuideApp({ initialCity }: { initialCity?: CityId }) {
     map.current?.setStops(stops, activeIdx, alts);
   }, []);
 
+  const drawPinsRef = useRef(drawPins);
+  useEffect(() => {
+    drawPinsRef.current = drawPins;
+  }, [drawPins]);
+
   const focusStop = useCallback(
     (i: number) => {
       const s = stopsRef.current[i];
@@ -264,6 +288,8 @@ export function GuideApp({ initialCity }: { initialCity?: CityId }) {
       setInput("");
       setStatus("thinking");
       setTitle("");
+      setShareId(null);
+      setCopied(false);
       setStops([]);
       stopsRef.current = [];
       choiceRef.current = {};
@@ -320,7 +346,22 @@ export function GuideApp({ initialCity }: { initialCity?: CityId }) {
       for (;;) {
         const e = await next();
         if (!e || id !== run.current) break;
-        if (e.t === "say") {
+        if (e.t === "city") {
+          // Savvy planned for another city than the one on screen: follow him.
+          if (e.city !== cityRef.current) {
+            cityRef.current = e.city;
+            setCity(e.city);
+            try {
+              window.history.pushState(null, "", `/${CITIES[e.city].slug}`);
+              document.title = `${NAME} ${CITIES[e.city].name}: ${TAGLINE}`;
+            } catch {}
+          }
+        } else if (e.t === "share") {
+          setShareId(e.id);
+          try {
+            window.history.replaceState(null, "", `/t/${e.id}`);
+          } catch {}
+        } else if (e.t === "say") {
           setStatus("touring");
           lastLine = e.text;
           talking.current = say(e.text, e.pose === "think" ? "wow" : e.pose, id, "excited").then(() => {
@@ -426,6 +467,27 @@ export function GuideApp({ initialCity }: { initialCity?: CityId }) {
     }
   }, [send, status, unlock, gesture]);
 
+  /** Share the saved list: the phone's share sheet when there is one, else copy the link. */
+  const shareList = async () => {
+    if (!shareId) return;
+    const url = `${window.location.origin}/t/${shareId}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `${title} | ${NAME}`, text: `${title}: Savvy's picks in ${CITIES[city].name}`, url });
+        return;
+      }
+    } catch {
+      return; // the user closed the share sheet
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      window.prompt("Copy this link", url);
+    }
+  };
+
   /** Silence Savvy for the rest of this answer (captions keep going). The mute button turns voice off for good. */
   const stopTalking = () => {
     hushed.current = run.current;
@@ -453,6 +515,7 @@ export function GuideApp({ initialCity }: { initialCity?: CityId }) {
     choiceRef.current = {};
     setChoice({});
     setTitle("");
+    setShareId(null);
     setActive(null);
     setStatus("idle");
     setSpeaking(false);
@@ -616,6 +679,12 @@ export function GuideApp({ initialCity }: { initialCity?: CityId }) {
             <div className="rise text-center">
               <p className="kicker text-gold-text">Your evening</p>
               <h2 className="mt-1 text-[1.75rem]">{title}</h2>
+              {shareId && (
+                <button type="button" onClick={() => void shareList()} className="btn mt-2 border-2 border-gold py-1.5 text-ink hover:bg-sunk">
+                  {copied ? <Check className="size-4" aria-hidden /> : <Share2 className="size-4" aria-hidden />}
+                  {copied ? "Link copied" : "Share this list"}
+                </button>
+              )}
             </div>
           )}
           {busy && stops.length < 1 && (
