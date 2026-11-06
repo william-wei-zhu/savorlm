@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { km, hop, stopShot, walkMinutes, bearing } from "@/lib/guide/geo";
 import { badgeFrom, fitScore, MIN_P } from "@/lib/guide/checks";
 import { CITIES, CITY_IDS, SLUG_ALIASES, cityBySlug, cityForTz } from "@/lib/cities";
-import { displayName, mergeMentions, normName, popularity, isRoundup } from "@/lib/guide/consensus";
+import { displayName, mergeMentions, normName, popularity, isRoundup, wasSeen } from "@/lib/guide/consensus";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { sse, sseParser, type SceneEvent } from "@/lib/guide/scene";
-import { cleanSpeech, oneListLine } from "@/lib/guide/speech";
+import { cleanSpeech, followUps, listSummary, oneListLine } from "@/lib/guide/speech";
+import { HISTORY_KEY, MAX_CHATS, ago, chatTitle, loadChats, saveChat, type Chat } from "@/lib/guide/history";
 import { newTourId, TOUR_ID } from "@/lib/server/tours";
 import { clientIp } from "@/lib/server/client-ip";
 import { sameOrigin } from "@/lib/server/origin";
@@ -187,5 +188,55 @@ describe("oneListLine", () => {
   });
   it("keeps a clean line", () => {
     expect(oneListLine("Austin runs on great tortillas, so let me find four taco spots.")).toBe("Austin runs on great tortillas, so let me find four taco spots.");
+  });
+});
+
+describe("follow-ups", () => {
+  it("tells Savvy what he listed, in order", () => {
+    expect(listSummary("Austin's Taco Titans", ["Veracruz", "Suerte"])).toBe("List: Austin's Taco Titans. 1) Veracruz 2) Suerte");
+    expect(listSummary("", [], "Hi there!")).toBe("Hi there!");
+  });
+  it("keeps short, distinct chips and drops next-stop ones", () => {
+    expect(followUps(["Cheaper picks.", "cheaper picks", "Then grab dessert", "Somewhere quieter", "A very long follow-up request that goes on and on", 7, "Closer to downtown", "Best birria instead"])).toEqual(["Cheaper picks", "Somewhere quieter", "Closer to downtown"]);
+    expect(followUps(undefined)).toEqual([]);
+  });
+  it("skips places already shown, including longer forms of the name", () => {
+    const seen = new Set([normName("Hattie B's"), normName("Prince's Hot Chicken Shack")]);
+    expect(wasSeen(normName("Hattie B's Hot Chicken"), seen)).toBe(true);
+    expect(wasSeen(normName("Prince's Hot Chicken Shack"), seen)).toBe(true);
+    expect(wasSeen(normName("Bolton's Spicy Chicken & Fish"), seen)).toBe(false);
+  });
+});
+
+describe("recent chats", () => {
+  const mem = () => {
+    const m = new Map<string, string>();
+    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
+  };
+  const stop = { index: 0, role: "dinner", line: "", hop: null, options: [] };
+  const chat = (id: string, t: number, lists = 1): Chat => ({ id, city: "austin", updatedAt: t, thread: [{ id: "e", q: "tacos", a: lists ? { title: `List ${id}`, shareId: null, stops: [stop], choice: {}, say: "", next: [] } : null }] });
+  it("keeps the newest chats, and only ones with a list", () => {
+    const s = mem();
+    for (let i = 0; i < MAX_CHATS + 5; i++) saveChat(chat(`c${i}`, i), s);
+    saveChat(chat("empty", 999, 0), s);
+    const list = loadChats(s);
+    expect(list.length).toBe(MAX_CHATS);
+    expect(list[0].id).toBe(`c${MAX_CHATS + 4}`);
+    expect(list.some((c) => c.id === "empty")).toBe(false);
+    expect(chatTitle(list[0])).toBe(`List c${MAX_CHATS + 4}`);
+  });
+  it("updates a chat in place and survives corrupt storage", () => {
+    const s = mem();
+    saveChat(chat("a", 1), s);
+    saveChat(chat("a", 2), s);
+    expect(loadChats(s).length).toBe(1);
+    s.setItem(HISTORY_KEY, "{not json");
+    expect(loadChats(s)).toEqual([]);
+    expect(loadChats(null)).toEqual([]);
+  });
+  it("says how long ago", () => {
+    expect(ago(1000, 1000)).toBe("just now");
+    expect(ago(0, 3 * 3600_000)).toBe("3 hr ago");
+    expect(ago(0, 5 * 60_000)).toBe("5 min ago");
   });
 });

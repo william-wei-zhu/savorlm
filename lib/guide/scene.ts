@@ -63,7 +63,8 @@ export type SceneEvent =
   | { t: "city"; city: CityId }
   | { t: "fly"; shot: Shot; label?: string }
   | { t: "stop"; stop: StopCard; shot: Shot }
-  | { t: "done"; text: string; title: string }
+  /** next: up to 3 tap-to-ask follow-ups for this list. */
+  | { t: "done"; text: string; title: string; next?: string[] }
   /** The finished list was saved: share it at /t/<id>. */
   | { t: "share"; id: string }
   | { t: "error"; text: string };

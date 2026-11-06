@@ -112,3 +112,10 @@ const ROUNDUP_URL = /\/(guides?|lists?|best-|top-|blog\/|news\/|articles?\/|eate
 export function isRoundup(h: { title: string; url: string }) {
   return ROUNDUP_TITLE.test(h.title) || ROUNDUP_URL.test(h.url);
 }
+
+/** Whether a venue key is one the user has already seen (exact, or one name is the other plus a suffix). */
+export function wasSeen(key: string, seen: Set<string>): boolean {
+  if (seen.has(key)) return true;
+  for (const s of seen) if (s.length >= 5 && (key.startsWith(`${s} `) || s.startsWith(`${key} `))) return true;
+  return false;
+}

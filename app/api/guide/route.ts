@@ -14,6 +14,8 @@ const Body = z.object({
   message: z.string().trim().min(1).max(500),
   city: z.enum(CITY_IDS as [string, ...string[]]).nullable().default(null),
   history: z.array(z.object({ role: z.enum(["user", "guide"]), text: z.string().max(800) })).max(8).default([]),
+  // Places already listed in this chat, so "show me others" skips them.
+  seen: z.array(z.string().max(120)).max(24).default([]),
 });
 
 // Streams the scene script (see lib/guide/scene.ts) as server-sent events.
@@ -35,7 +37,7 @@ export async function POST(req: Request) {
       try {
         const stops: StopCard[] = [];
         let city: CityId | null = body.city as CityId | null;
-        for await (const e of runGuide({ message: body.message, history: body.history, city: body.city as never, signal: req.signal })) {
+        for await (const e of runGuide({ message: body.message, history: body.history, city: body.city as never, seen: body.seen, signal: req.signal })) {
           controller.enqueue(enc.encode(sse(e)));
           console.log(`guide +${Date.now() - t0}ms ${e.t}`);
           if (e.t === "stop") stops.push(e.stop);

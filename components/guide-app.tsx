@@ -7,20 +7,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Check, ChevronLeft, ChevronRight, Keyboard, Mic, Send, Share2, Sparkles, Square, Volume2, VolumeX, RotateCcw, Settings } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, History, Keyboard, Mic, Send, Share2, Sparkles, Square, Trash2, Volume2, VolumeX, RotateCcw, Settings, X } from "lucide-react";
 import { MapView, type MapHandle, type Pin } from "./map-view";
 import { Savvy } from "./savvy";
 import { StopTicket } from "./stop-card";
+import { Photo } from "./photo";
 import { audio } from "@/lib/audio/engine";
 import { Mic as MicRecorder, blobToBase64 } from "@/lib/audio/recorder";
-import { sseParser, type Pose, type SceneEvent, type SharedList, type StopCard } from "@/lib/guide/scene";
+import { photoSrc, sseParser, type Pose, type SceneEvent, type SharedList, type StopCard } from "@/lib/guide/scene";
+import { ago, chatTitle, clearChats, loadChats, newChatId, saveChat, type Answer, type Chat, type Exchange } from "@/lib/guide/history";
+import { listSummary } from "@/lib/guide/speech";
 import { CITIES, CITY_IDS, REGIONS, US_VIEW, cityForTz, cityIcon, type CityId } from "@/lib/cities";
 import { CityChooser } from "./city-chooser";
 import { track } from "@/lib/analytics";
 import { NAME, TAGLINE } from "@/lib/brand";
 import { cityShot } from "@/lib/guide/geo";
 
-type Turn = { role: "user" | "guide"; text: string };
 type Status = "idle" | "thinking" | "touring" | "listening" | "hearing";
 type Mood = "warm" | "excited" | "curious" | "cozy";
 
@@ -68,6 +70,9 @@ function guessCity(): CityId {
 /** The option currently picked for a stop (Savvy's first unless the user chose another). */
 const pickOf = (s: StopCard, choice: Record<number, number>) => s.options[choice[s.index] ?? 0] ?? s.options[0];
 
+/** Tap-to-ask follow-ups when Savvy didn't suggest any. */
+const FALLBACK_NEXT = ["Show me others", "Cheaper picks", "Somewhere quieter"];
+
 const words = (s: string) => s.split(/\s+/).filter(Boolean).length;
 const center = (c: CityId) => ({ lat: CITIES[c].center.latitude, lng: CITIES[c].center.longitude });
 
@@ -87,7 +92,23 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   const [speaking, setSpeaking] = useState(false);
   const [caption, setCaption] = useState(initialTour ? `Here's the list: ${initialTour.title}. Tap any pick and I'll tell you about it.` : initialCity ? "Hi, I'm Savvy! Tell me what you're craving and I'll find the top 4 spots." : "Hi, I'm Savvy! Pick a city and I'll find the places locals love.");
   const [status, setStatus] = useState<Status>("idle");
-  const [turns, setTurns] = useState<Turn[]>(initialTour ? [{ role: "user", text: initialTour.message }] : []);
+  // The chat: every ask and Savvy's list. The open exchange's list lives in
+  // the "live" state below (stops, choice, title, shareId, next, reply);
+  // the others are folded into a slim row until tapped.
+  const [thread, setThread] = useState<Exchange[]>(initialTour ? [{ id: initialTour.id, q: initialTour.message, a: null }] : []);
+  const threadRef = useRef<Exchange[]>(thread);
+  const [openIdx, setOpenIdx] = useState(0);
+  const openRef = useRef(0);
+  const chatId = useRef(newChatId());
+  const [next, setNext] = useState<string[]>([]);
+  const nextRef = useRef<string[]>([]);
+  const [reply, setReply] = useState(""); // Savvy's line for an answer without a list (small talk, errors)
+  const replyRef = useRef("");
+  const titleRef = useRef(initialTour?.title ?? "");
+  const shareIdRef = useRef<string | null>(initialTour?.id ?? null);
+  const [recent, setRecent] = useState<Chat[]>([]);
+  const [recentOpen, setRecentOpen] = useState(false);
+  const openElRef = useRef<HTMLDivElement>(null);
   const [stops, setStops] = useState<StopCard[]>(initialTour?.stops ?? []);
   const [active, setActive] = useState<number | null>(null);
   const [choice, setChoice] = useState<Record<number, number>>({});
@@ -101,7 +122,6 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   const [micLv, setMicLv] = useState(0);
   const [intro, setIntro] = useState(true);
   const [capOpen, setCapOpen] = useState(""); // the caption the phone dock shows in full
-  const resultsRef = useRef<HTMLDivElement>(null);
   const mic = useRef<MicRecorder | null>(null);
   const run = useRef(0);
   const abort = useRef<AbortController | null>(null);
@@ -150,24 +170,63 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
     return () => clearTimeout(t);
   }, [landing]);
 
-  /** Drop the current answer: request, voice, picks, list title, share link and pins. */
+  /** The open list as it stands now (the live state), or null when there is nothing yet. */
+  const snapshot = useCallback((): Answer | null => {
+    if (!stopsRef.current.length && !replyRef.current) return null;
+    return { title: titleRef.current, shareId: shareIdRef.current, stops: stopsRef.current, choice: choiceRef.current, say: replyRef.current, next: nextRef.current };
+  }, []);
+
+  /** The thread with the open exchange's live list written back into it. */
+  const liveThread = useCallback((): Exchange[] => {
+    const t = threadRef.current;
+    const a = snapshot();
+    return a && t[openRef.current] ? t.map((e, j) => (j === openRef.current ? { ...e, a } : e)) : t;
+  }, [snapshot]);
+
+  const putThread = useCallback((t: Exchange[], open: number) => {
+    threadRef.current = t;
+    openRef.current = open;
+    setThread(t);
+    setOpenIdx(open);
+  }, []);
+
+  /** Make an answer the live one, or clear the live state with null. */
+  const loadLive = useCallback((a: Answer | null) => {
+    stopsRef.current = a?.stops ?? [];
+    choiceRef.current = a?.choice ?? {};
+    titleRef.current = a?.title ?? "";
+    shareIdRef.current = a?.shareId ?? null;
+    nextRef.current = a?.next ?? [];
+    replyRef.current = a?.say ?? "";
+    setStops(stopsRef.current);
+    setChoice(choiceRef.current);
+    setTitle(titleRef.current);
+    setShareId(shareIdRef.current);
+    setNext(nextRef.current);
+    setReply(replyRef.current);
+    setActive(null);
+  }, []);
+
+  /** Save this chat to the browser's recent chats (only chats with a list are kept). */
+  const persist = useCallback(() => {
+    const t = liveThread();
+    if (t.length) setRecent(saveChat({ id: chatId.current, city: cityRef.current, updatedAt: Date.now(), thread: t }));
+  }, [liveThread]);
+
+  /** End this chat (it stays in Recent) and drop the answer: request, voice, picks, title, share link and pins. */
   const clearAnswer = useCallback(() => {
+    persist();
     abort.current?.abort();
     run.current++;
     audio?.stopVoice();
-    setTurns([]);
-    setStops([]);
-    stopsRef.current = [];
-    choiceRef.current = {};
-    setChoice({});
-    setTitle("");
-    setShareId(null);
+    putThread([], 0);
+    chatId.current = newChatId();
+    loadLive(null);
     setStreaming(false);
-    setActive(null);
     setStatus("idle");
     setSpeaking(false);
     map.current?.setStops([], null);
-  }, []);
+  }, [persist, putThread, loadLive]);
 
   /** Picking a city moves to its own URL without reloading (shareable links). */
   const pickCity = useCallback((c: CityId, from: "chooser" | "picker" | "map" = "picker") => {
@@ -323,10 +382,10 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   );
 
   const send = useCallback(
-    async (text: string, via: "typed" | "idea" | "voice" = "typed") => {
+    async (text: string, via: "typed" | "idea" | "voice" | "chip" = "typed") => {
       const message = text.trim();
       if (!message) return;
-      track("search_sent", { city, via });
+      track("search_sent", { city, via, followup: threadRef.current.length > 0 });
       await unlock();
       audio?.stopVoice();
       abort.current?.abort();
@@ -335,22 +394,27 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
       abort.current = ac;
       setInput("");
       setStatus("thinking");
-      setTitle("");
-      setShareId(null);
       setCopied(false);
       setStreaming(true);
-      setStops([]);
-      stopsRef.current = [];
-      choiceRef.current = {};
-      setChoice({});
-      setActive(null);
+      // The chat so far: what Savvy listed (so "the second one" or "cheaper"
+      // makes sense) and every place already shown (so "others" skips them).
+      const prior = liveThread();
+      const history = prior
+        .slice(-3)
+        .flatMap((e) => {
+          const g = e.a ? listSummary(e.a.title, e.a.stops[0]?.options.map((o) => o.name) ?? [], e.a.say) : "";
+          return g ? [{ role: "user" as const, text: e.q }, { role: "guide" as const, text: g.slice(0, 800) }] : [{ role: "user" as const, text: e.q }];
+        })
+        .slice(-6);
+      const seen = [...new Set(prior.flatMap((e) => e.a?.stops.flatMap((s) => s.options.map((o) => o.name.slice(0, 120))) ?? []))].slice(-24);
+      const t = [...prior, { id: newChatId(), q: message, a: null }];
+      putThread(t, t.length - 1);
+      loadLive(null);
       map.current?.setStops([], null);
       gesture("think", "think");
       setCaption("Ooh, let me sniff around...");
-      const history = turns.slice(-6);
-      setTurns((t) => [...t, { role: "user", text: message }]);
-      // Phones: bring the results into view so the scouting card shows right away.
-      if (window.matchMedia("(max-width: 63.99rem)").matches) setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+      // Bring the new ask into view so the scouting card shows right away.
+      setTimeout(() => openElRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
 
       // The director: events are queued as they stream and played in order.
       const queue: SceneEvent[] = [];
@@ -359,13 +423,21 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
         // The list's title and share link apply the moment they arrive, not
         // after Savvy finishes talking (William: Share must always be there).
         if (id === run.current && e.t === "share") {
+          shareIdRef.current = e.id;
           setShareId(e.id);
           try {
             window.history.replaceState(null, "", `/t/${e.id}`);
           } catch {}
           return;
         }
-        if (id === run.current && e.t === "done" && e.title) setTitle(e.title);
+        if (id === run.current && e.t === "done") {
+          if (e.title) {
+            titleRef.current = e.title;
+            setTitle(e.title);
+          }
+          nextRef.current = e.next ?? [];
+          setNext(nextRef.current);
+        }
         queue.push(e);
         sig.wake?.();
       };
@@ -377,7 +449,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
 
       (async () => {
         try {
-          const res = await fetch("/api/guide", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, city, history }), signal: ac.signal });
+          const res = await fetch("/api/guide", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, city, history, seen }), signal: ac.signal });
           if (!res.ok || !res.body) throw new Error(String(res.status));
           const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
           const feed = sseParser(push);
@@ -421,6 +493,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
         } else if (e.t === "say") {
           setStatus("touring");
           lastLine = e.text;
+          replyRef.current = e.text;
           talking.current = say(e.text, e.pose === "think" ? "wow" : e.pose, id, "excited").then(() => {
             if (id === run.current) gesture("look", "look");
           });
@@ -460,10 +533,15 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           if (id !== run.current) break; // a new request or city took over
           if (e.text) await say(e.text, "dance", id, "cozy");
           if (id === run.current && picked.length) gesture("cheer", "listen", 1900);
-          setTurns((t) => [...t, { role: "guide", text: picked.length ? `My top pick: ${picked[0]}.` : lastLine }]);
+          if (id === run.current) {
+            if (!picked.length) setReply(lastLine);
+            persist();
+          }
         } else if (e.t === "error") {
           await settle();
           if (id !== run.current) break;
+          replyRef.current = e.text;
+          setReply(e.text);
           await say(e.text, "listen", id, "warm");
         }
       }
@@ -472,7 +550,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
         setPose((p) => (p === "talk" || p === "think" || p === "look" ? "listen" : p));
       }
     },
-    [city, turns, say, unlock, gesture, drawPins, showOption],
+    [city, say, unlock, gesture, drawPins, showOption, liveThread, putThread, loadLive, persist],
   );
 
   const listen = useCallback(async () => {
@@ -571,15 +649,118 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   const reset = () => {
     clearAnswer();
     gesture("wave", "listen", 2400);
-    setCaption("Fresh page. Where are we eating?");
+    setCaption("New chat. What are we eating?");
     map.current?.fly(cityShot(center(city)));
+  };
+
+  /** Unfold an earlier list in this chat: it becomes the open one (cards, pins, map). */
+  const reopen = (i: number) => {
+    if (i === openRef.current || streaming) return;
+    const t = liveThread();
+    const a = t[i]?.a;
+    if (!a?.stops.length) return;
+    run.current++;
+    audio?.stopVoice();
+    setSpeaking(false);
+    setStatus("idle");
+    putThread(t, i);
+    loadLive(a);
+    focusStop(0);
+    track("list_reopened", { city: cityRef.current });
+    gesture("point", "listen", 1400);
+    setCaption(`Back to ${a.title || "these picks"}. Tap any pick and I'll tell you about it.`);
+    setTimeout(() => openElRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+  };
+
+  /** Open a saved chat from Recent, straight from this browser's storage (no new search). */
+  const restoreChat = (c: Chat) => {
+    setRecentOpen(false);
+    const lists = c.thread.filter((e) => e.a?.stops.length);
+    track("chat_restored", { city: c.city, lists: lists.length });
+    clearAnswer();
+    if (!CITIES[c.city] || !lists.length) return;
+    chatId.current = c.id;
+    let i = c.thread.length - 1;
+    while (i > 0 && !c.thread[i].a?.stops.length) i--;
+    putThread(c.thread, i);
+    loadLive(c.thread[i].a);
+    if (landingRef.current) {
+      landingRef.current = false;
+      setLanding(false);
+      unlocked.current = true;
+      void audio?.unlock().catch(() => {});
+    }
+    cityRef.current = c.city;
+    setCity(c.city);
+    try {
+      window.history.pushState(null, "", `/${CITIES[c.city].slug}`);
+      document.title = `${NAME} ${CITIES[c.city].name}: ${TAGLINE}`;
+    } catch {}
+    gesture("wave", "listen", 1600);
+    setCaption(`Welcome back! Here's ${c.thread[i].a?.title || "your list"}. Tap any pick, or ask me a follow-up.`);
+    // After the city move settles, pin the list and fly to its top pick.
+    setTimeout(() => focusStop(0), 450);
+    setTimeout(() => openElRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+  };
+
+  const openRecent = () => {
+    const list = loadChats();
+    setRecent(list);
+    setRecentOpen(true);
+    track("history_opened", { chats: list.length });
   };
 
   const busy = status === "thinking" || status === "touring" || status === "hearing";
   /** A city is open and nothing has been asked yet: show Savvy's three ways to start. */
-  const onboarding = !landing && !turns.length && (status === "idle" || status === "touring") && !stops.length;
+  const onboarding = !landing && !thread.length && (status === "idle" || status === "touring") && !stops.length;
   const prompts = PROMPTS[city] ?? PROMPTS.default!;
-  const lastUser = [...turns].reverse().find((t) => t.role === "user");
+  const chatting = !landing && thread.length > 0;
+
+  /** The follow-up box: pinned under the chat on desktop, in Savvy's dock on phones. */
+  const composer = (id: string, withMic: boolean, hint: string) => (
+    <form
+      className="flex items-end gap-2 rounded-2xl border-2 border-gold bg-surface p-2 shadow-[var(--shadow)]"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void send(input);
+      }}
+    >
+      <label htmlFor={id} className="sr-only">
+        Ask Savvy a follow-up
+      </label>
+      <textarea
+        id={id}
+        rows={1}
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            void send(input);
+          }
+        }}
+        placeholder={busy ? "Savvy is on it..." : hint}
+        maxLength={500}
+        className="field-sizing-content max-h-32 min-h-11 min-w-0 flex-1 resize-none rounded-xl border-2 border-transparent bg-sunk px-3 py-2 text-[1rem] font-bold leading-snug text-ink placeholder:text-ink-2 focus:border-gold"
+      />
+      {withMic && (
+        <button
+          type="button"
+          onClick={() => void listen()}
+          disabled={status === "hearing"}
+          className={`btn size-11 shrink-0 border-2 border-gold p-0 ${status === "listening" ? "btn-primary mic-live" : "text-ink hover:bg-sunk"}`}
+          style={{ ["--lv" as string]: micLv }}
+          aria-label={status === "listening" ? "Send what you said" : "Talk to Savvy"}
+          title={status === "listening" ? "Send what you said" : "Talk to Savvy"}
+        >
+          {status === "listening" ? <Send className="size-5" aria-hidden /> : <Mic className="size-5" aria-hidden />}
+        </button>
+      )}
+      <button type="submit" disabled={!input.trim()} className="btn btn-primary size-11 shrink-0 p-0 disabled:opacity-60" aria-label="Send to Savvy">
+        <Send className="size-5" />
+      </button>
+    </form>
+  );
 
   const poke = () => !speaking && gesture("laugh", "listen", 1300);
 
@@ -668,6 +849,9 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-[1.4rem] font-extrabold max-[380px]:text-[1.2rem] leading-tight tracking-tight lg:text-[2rem] lg:leading-none">{NAME}</h1>
           </div>
+          <button type="button" onClick={openRecent} className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk lg:size-11" aria-label="Recent chats" title="Recent chats">
+            <History className="size-5" />
+          </button>
           <button type="button" onClick={toggleVoice} className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk lg:size-11" aria-label={voice ? "Mute Savvy" : "Unmute Savvy"} title={voice ? "Mute Savvy" : "Unmute Savvy"}>
             {voice ? <Volume2 className="size-5" /> : <VolumeX className="size-5" />}
           </button>
@@ -681,8 +865,8 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
                 <ChevronLeft className="size-4" aria-hidden /> All cities
               </button>
               {citySelect("city", "py-1.5 text-[1.15rem]")}
-              {turns.length > 0 && (
-                <button type="button" onClick={reset} className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk" aria-label="New plan" title="New plan">
+              {thread.length > 0 && (
+                <button type="button" onClick={reset} className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk" aria-label="New chat" title="New chat">
                   <RotateCcw className="size-4" aria-hidden />
                 </button>
               )}
@@ -691,7 +875,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
         </header>
 
         {/* The panel: the ask, the picks, the footer. */}
-        <section className="menu-part order-2 flex flex-1 flex-col pb-32 lg:pb-0">
+        <section className={`menu-part order-2 flex flex-1 flex-col ${chatting ? "pb-48" : "pb-32"} lg:pb-0`}>
         <div className="hidden px-6 lg:block">
           <div className="ornament text-[0.8rem]" aria-hidden>
             ✦
@@ -706,7 +890,9 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           </div>
         ) : (
           <>
-        {/* The ask: the first thing in the menu, by voice or by typing. */}
+        {/* The first ask: the first thing in the menu, by voice or by typing.
+            Once a chat starts, follow-ups go in the composer below the chat. */}
+        {!thread.length && (
         <form
           key={`ask-${city}`}
           className={`mx-6 mt-3 rounded-2xl border-2 border-gold bg-surface p-3 shadow-[var(--shadow)] ${onboarding ? "ask-glow" : ""}`}
@@ -751,41 +937,65 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
             {status === "listening" ? "Listening... tap to send" : status === "hearing" ? "Savvy is listening back..." : "Or just talk to Savvy"}
           </button>
         </form>
+        )}
 
-        <div ref={resultsRef} className="flex-1 scroll-mt-3 space-y-4 px-6 pb-5 pt-4">
-          {lastUser && (
-            <div className="flex justify-end">
-              <p className="user-bubble max-w-[88%] px-4 py-2.5">{lastUser.text}</p>
-            </div>
-          )}
-          {(title || stops.length > 0) && (
-            <div className="rise text-center">
-              <p className="kicker text-gold-text">Savvy&apos;s top 4</p>
-              <h2 className="mt-1 text-[1.75rem]">{title || "Savvy's picks"}</h2>
-              {shareId ? (
-                <button type="button" onClick={() => void shareList()} className="btn mt-2 border-2 border-gold py-1.5 text-ink hover:bg-sunk">
-                  {copied ? <Check className="size-4" aria-hidden /> : <Share2 className="size-4" aria-hidden />}
-                  {copied ? "Link copied" : "Share this list"}
-                </button>
-              ) : streaming ? (
-                <button type="button" disabled className="btn mt-2 border-2 border-gold py-1.5 text-ink opacity-70">
-                  <Share2 className="size-4" aria-hidden /> Saving your link…
-                </button>
-              ) : null}
-            </div>
-          )}
-          {busy && stops.length < 1 && (
-            <div className="ticket shimmer h-56 overflow-hidden" aria-label="Savvy is scouting">
-              <div className="h-36 bg-sunk" />
-              <p className="kicker px-4 pt-4 text-gold-text">Scouting {CITIES[city].name}</p>
-            </div>
-          )}
-          {stops.map((s, i) => (
-            <div key={`${s.index}-${s.options[0]?.id}`}>
-              <StopTicket stop={s} chosen={choice[s.index] ?? 0} active={active === i} onSelect={() => focusStop(i)} onChoose={(j) => choose(i, j)} />
+        {/* The chat: each ask, then Savvy's list. The open list is in full;
+            earlier ones fold into a slim row that unfolds on tap. */}
+        <div className="flex-1 space-y-4 px-6 pb-5 pt-4">
+          {thread.map((ex, i) => (
+            <div key={ex.id} ref={i === openIdx ? openElRef : undefined} className="scroll-mt-3 space-y-4">
+              <div className="flex justify-end">
+                <p className="user-bubble max-w-[88%] px-4 py-2.5">{ex.q}</p>
+              </div>
+              {i !== openIdx ? (
+                ex.a?.stops.length ? <FoldedList a={ex.a} onOpen={() => reopen(i)} /> : ex.a?.say ? <SavvyLine text={ex.a.say} /> : null
+              ) : (
+                <>
+                  {(title || stops.length > 0) && (
+                    <div className="rise text-center">
+                      <p className="kicker text-gold-text">Savvy&apos;s top 4</p>
+                      <h2 className="mt-1 text-[1.75rem]">{title || "Savvy's picks"}</h2>
+                      {shareId ? (
+                        <button type="button" onClick={() => void shareList()} className="btn mt-2 border-2 border-gold py-1.5 text-ink hover:bg-sunk">
+                          {copied ? <Check className="size-4" aria-hidden /> : <Share2 className="size-4" aria-hidden />}
+                          {copied ? "Link copied" : "Share this list"}
+                        </button>
+                      ) : streaming ? (
+                        <button type="button" disabled className="btn mt-2 border-2 border-gold py-1.5 text-ink opacity-70">
+                          <Share2 className="size-4" aria-hidden /> Saving your link…
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
+                  {busy && stops.length < 1 && i === thread.length - 1 && (
+                    <div className="ticket shimmer h-56 overflow-hidden" aria-label="Savvy is scouting">
+                      <div className="h-36 bg-sunk" />
+                      <p className="kicker px-4 pt-4 text-gold-text">Scouting {CITIES[city].name}</p>
+                    </div>
+                  )}
+                  {stops.map((st, k) => (
+                    <div key={`${st.index}-${st.options[0]?.id}`}>
+                      <StopTicket stop={st} chosen={choice[st.index] ?? 0} active={active === k} onSelect={() => focusStop(k)} onChoose={(j) => choose(k, j)} />
+                    </div>
+                  ))}
+                  {!stops.length && reply && !busy && <SavvyLine text={reply} />}
+                  {i === thread.length - 1 && stops.length > 0 && !streaming && status !== "thinking" && (
+                    <div className="rise">
+                      <p className="kicker text-gold-text">Ask Savvy next</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {(next.length ? next : FALLBACK_NEXT).map((n) => (
+                          <button key={n} type="button" onClick={() => void send(n, "chip")} className="btn border-2 border-gold py-1.5 text-left text-ink hover:bg-sunk">
+                            <Sparkles className="size-4 shrink-0" aria-hidden /> {n}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           ))}
-          {!turns.length && (
+          {!thread.length && (
             <div className="pt-1">
               <p className="kicker text-gold-text">Or tap an idea to start</p>
               <ul className="mt-1 border-t border-line">
@@ -804,7 +1014,12 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           )}
         </div>
 
-
+        {/* Desktop: the follow-up box stays pinned at the bottom of the menu while the chat scrolls. */}
+        {chatting && (
+          <div className="sticky bottom-0 z-20 hidden px-6 pb-4 pt-6 lg:block" style={{ background: "linear-gradient(to bottom, transparent, var(--paper) 1.5rem)" }}>
+            {composer("ask-next", true, "Ask a follow-up: cheaper, closer, others...")}
+          </div>
+        )}
           </>
         )}
 
@@ -824,8 +1039,10 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
         {/* Phones: Savvy docks at the bottom like a "now playing" bar. It is
             opaque and the panel pads for it, so he never covers the text. */}
         <div className="menu fixed inset-x-0 bottom-0 z-30 border-t-2 border-gold lg:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+          {/* In a chat, the follow-up box rides on top of the dock (the dock's mic is the voice button). */}
+          {chatting && <div className="mx-auto max-w-2xl px-3 pt-2.5">{composer("ask-next-m", false, "Ask a follow-up...")}</div>}
           <div className="mx-auto flex max-w-2xl items-center gap-3 px-3 py-2">
-            <div className="savvy-stage -mt-7 w-[4.75rem] shrink-0">
+            <div className={`savvy-stage shrink-0 ${chatting ? "w-[4rem]" : "-mt-7 w-[4.75rem]"}`}>
               <Savvy pose={pose} speaking={speaking} className="h-auto w-full" onPoke={poke} />
             </div>
             <button type="button" onClick={() => setCapOpen((o) => (o === caption ? "" : caption))} className="min-w-0 flex-1 text-left" aria-expanded={capOpen === caption} aria-live="polite">
@@ -839,7 +1056,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
                   </span>
                 )}
               </span>
-              <span className={`text-[1rem] leading-snug ${capOpen === caption ? "block" : "line-clamp-3"}`}>{caption}</span>
+              <span className={`text-[1rem] leading-snug ${capOpen === caption ? "block" : chatting ? "line-clamp-2" : "line-clamp-3"}`}>{caption}</span>
             </button>
             {speaking ? (
               <button type="button" onClick={stopTalking} className="btn size-12 shrink-0 border-2 border-gold p-0 text-ink" aria-label="Stop talking">
@@ -852,6 +1069,102 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
             )}
           </div>
         </div>
+      </div>
+
+      {recentOpen && <RecentChats chats={recent} onPick={restoreChat} onClose={() => setRecentOpen(false)} onClear={() => (clearChats(), setRecent([]))} />}
+    </div>
+  );
+}
+
+/** An earlier list in the chat, folded: its title, four photos and the names. Tap to unfold. */
+function FoldedList({ a, onOpen }: { a: Answer; onOpen: () => void }) {
+  const opts = a.stops[0]?.options ?? [];
+  return (
+    <button type="button" onClick={onOpen} className="rise flex w-full items-center gap-3 rounded-2xl border-2 border-line bg-surface p-3 text-left shadow-[var(--shadow)] transition-colors hover:border-gold" aria-label={`Show ${a.title || "this list"} again`}>
+      <span className="flex shrink-0 -space-x-3" aria-hidden>
+        {opts.slice(0, 4).map((o) => (
+          <span key={o.id} className="relative size-11 overflow-hidden rounded-full border-2 border-surface bg-sunk">
+            <Photo src={photoSrc(o)} className="absolute inset-0 h-full w-full" iconClass="size-4" />
+          </span>
+        ))}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="kicker block text-gold-text">Savvy&apos;s top {opts.length}</span>
+        <span className="block truncate font-display text-[1.1rem] font-bold leading-tight">{a.title || "Savvy's picks"}</span>
+        <span className="block truncate text-[0.9rem] text-ink-2">{opts.map((o) => o.name).join(", ")}</span>
+      </span>
+      <span className="grid size-9 shrink-0 place-items-center rounded-full border-[1.5px] border-gold text-gold-text" aria-hidden>
+        <ChevronRight className="size-5" />
+      </span>
+    </button>
+  );
+}
+
+/** Savvy's reply when there's no list (small talk, or he couldn't find a match). */
+function SavvyLine({ text }: { text: string }) {
+  return (
+    <div className="rise flex items-start gap-2.5">
+      <Image src="/savvy/avatar.webp" alt="" width={36} height={36} className="size-9 shrink-0 rounded-full border-2 border-gold bg-[#2a211d]" />
+      <p className="rounded-2xl rounded-tl-md border-2 border-line bg-surface px-4 py-2.5 leading-snug">{text}</p>
+    </div>
+  );
+}
+
+/** Recent chats: a bottom sheet on phones, a panel over the menu on desktop. Saved only in this browser. */
+function RecentChats({ chats, onPick, onClose, onClear }: { chats: Chat[]; onPick: (c: Chat) => void; onClose: () => void; onClear: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-black/60 lg:items-start" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Recent chats"
+        onClick={(e) => e.stopPropagation()}
+        className="menu rise max-h-[80dvh] w-full overflow-y-auto rounded-t-3xl border-2 border-gold px-5 pt-5 lg:ml-6 lg:mt-24 lg:max-h-[72dvh] lg:w-[29rem] lg:rounded-3xl"
+        style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
+      >
+        <div className="flex items-center gap-3">
+          <History className="size-6 text-gold-text" aria-hidden />
+          <h2 className="flex-1 text-[1.6rem]">Recent chats</h2>
+          <button type="button" onClick={onClose} className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk" aria-label="Close">
+            <X className="size-5" />
+          </button>
+        </div>
+        <p className="mt-1 text-[0.95rem] text-ink-2">Saved only on this device. Tap one to pick up where you left off.</p>
+        {chats.length ? (
+          <>
+            <ul className="mt-3 border-t border-line">
+              {chats.map((c) => {
+                const n = c.thread.filter((e) => e.a?.stops.length).length;
+                return (
+                  <li key={c.id}>
+                    <button type="button" onClick={() => onPick(c)} className="menu-item">
+                      <span className="min-w-0 flex-1">
+                        <span className="kicker block text-gold-text">
+                          {CITIES[c.city]?.name ?? "Somewhere"} · {ago(c.updatedAt)}
+                        </span>
+                        <span className="block truncate font-display text-[1.15rem] font-semibold leading-snug">{chatTitle(c)}</span>
+                        <span className="block text-[0.9rem] text-ink-2">{n === 1 ? "1 list" : `${n} lists`}</span>
+                      </span>
+                      <span className="chev" aria-hidden>
+                        <ChevronRight className="size-5" />
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            <button type="button" onClick={onClear} className="btn mt-4 border-2 border-gold py-1.5 text-ink hover:bg-sunk">
+              <Trash2 className="size-4" aria-hidden /> Clear history
+            </button>
+          </>
+        ) : (
+          <p className="mt-4 border-t border-line pt-4">No chats yet. Ask Savvy for something tasty and it shows up here.</p>
+        )}
       </div>
     </div>
   );
