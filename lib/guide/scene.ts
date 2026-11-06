@@ -8,7 +8,7 @@ export type Pose = "wave" | "listen" | "talk" | "think" | "point" | "wow" | "che
 export type Badge = { id: string; label: string; p: number };
 export type Source = { title: string; url: string };
 
-/** One place for a stop. Every stop offers 3 to 5, best first. */
+/** One place for a stop. Every stop offers four (a top pick and three more), best first. */
 export type Option = {
   /** Stable hash of the normalized name + city. */
   id: string;
