@@ -292,9 +292,9 @@ function candidateBlock(c: Candidate, checks: CheckId[]) {
 
 async function pick(input: GuideInput, p: Plan, stops: { i: number; stop: PlanStop; cands: Candidate[] }[], last: boolean, cityName: string): Promise<PickResult> {
   const tz = p.city !== "other" ? CITIES[p.city].tz : "America/New_York";
-  const sys = `You are Savvy, a warm, witty raccoon food guide. For each stop of the user's outing you give the top 3 to 5 options, best first, and say one spoken line.
+  const sys = `You are Savvy, a warm, witty raccoon food guide. For each stop of the user's outing you give the top 4 options (your top pick and three more), best first.
 It is now ${nowIn(tz)} in ${cityName}.
-options: rank the candidates by key, best first: fit to the craving, budget and occasion first; then the user's checks (higher P(yes) is better); then how many independent sites named it (the city's favorites). Prefer places the evidence shows are open at the relevant time. Return 3 to 5 options when that many candidates fit (fewer only if the rest clearly don't fit). Each key at most once.
+options: rank the candidates by key, best first: fit to the craving, budget and occasion first; then the user's checks (higher P(yes) is better); then how many independent sites named it (the city's favorites). Prefer places the evidence shows are open at the relevant time. Return exactly 4 options when that many candidates fit (fewer only if the rest clearly don't fit). Each key at most once.
 line: a one-sentence summary of the top three for the caption (max 40 words). Savvy speaks each option's intro separately. Never invent dishes, prices or hours. ${NO_AWARDS} Never use an em-dash. No emoji.
 why (each option): max 14 words on what makes it great for this request, from the evidence. Same rules.
 intro (each option): what you say about this place alone when you introduce it, max 32 words, always saying the place's name in the first sentence, spoken, first person, like a friend who knows the city (what it is, one concrete detail from the evidence, today's hours if known). The first option's intro should make clear it is your top pick. If 2 or more sites named it you may call it a local favorite. Same rules.
@@ -365,7 +365,7 @@ async function toOption(c: Candidate, pk: PickOpt | undefined, near: LatLng | nu
   };
 }
 
-/** A stop card: Savvy's ranking (or ours if the pick call failed), 3 to 5 located options. */
+/** A stop card: Savvy's ranking (or ours if the pick call failed): a top pick and three more, located. */
 async function stopCard(cands: Candidate[], sp: StopPick | undefined, index: number, role: string, prev: LatLng | null, checks: CheckId[], cityName: string, cityId: string, used: Set<string>): Promise<StopCard | null> {
   const byKey = new Map(cands.map((c) => [c.key, c]));
   const order: { c: Candidate; pk?: PickOpt }[] = [];
@@ -374,7 +374,7 @@ async function stopCard(cands: Candidate[], sp: StopPick | undefined, index: num
     if (c && !used.has(c.key) && !order.some((o) => o.c === c)) order.push({ c, pk });
   }
   for (const c of cands) if (order.length < 4 && !used.has(c.key) && !order.some((o) => o.c === c)) order.push({ c });
-  const located = (await Promise.all(order.slice(0, 5).map((o, j) => toOption(o.c, o.pk, prev, checks, cityName, cityId, j === 0)))).filter((o): o is Option => !!o);
+  const located = (await Promise.all(order.slice(0, 4).map((o, j) => toOption(o.c, o.pk, prev, checks, cityName, cityId, j === 0)))).filter((o): o is Option => !!o);
   // A place appears in one stop only (names can differ between pages and picks).
   const opts = located.filter((o, j) => !used.has(normName(o.name)) && located.findIndex((x) => normName(x.name) === normName(o.name)) === j);
   if (!opts.length) return null;

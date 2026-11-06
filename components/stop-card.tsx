@@ -41,7 +41,8 @@ function Status({ o }: { o: Option }) {
 export function StopTicket({ stop, chosen, active, onSelect, onChoose }: { stop: Stop; chosen: number; active: boolean; onSelect: () => void; onChoose: (j: number) => void }) {
   const [badPhoto, setBadPhoto] = useState<Record<string, boolean>>({});
   const o = stop.options[chosen] ?? stop.options[0];
-  const others = stop.options.map((x, j) => ({ x, j })).filter(({ j }) => j !== chosen);
+  // All four options as a fixed list (William: the list must never reshuffle when one is tapped).
+  const rows = stop.options.map((x, j) => ({ x, j }));
   return (
     <article className={`ticket rise overflow-hidden transition-[outline] ${active ? "outline-2 outline-offset-2 outline-gold" : ""}`}>
       <button type="button" onClick={onSelect} className="block w-full text-left" aria-label={`Show ${o.name} on the map`}>
@@ -58,7 +59,7 @@ export function StopTicket({ stop, chosen, active, onSelect, onChoose }: { stop:
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-[#120d0b] via-[#120d0b]/45 to-transparent" />
           <span className="kicker absolute left-3 top-3 rounded-full border border-[#c9a063] bg-[#120d0b] px-3 py-1 text-[#f3d9ad]">{stop.role}</span>
-          <span className="kicker absolute right-3 top-3 rounded-full bg-[#f0c98e] px-3 py-1 text-[#1a1210]">{chosen === 0 ? "Savvy's pick" : `Option ${chosen + 1}`}</span>
+          <span className="kicker absolute right-3 top-3 rounded-full bg-[#f0c98e] px-3 py-1 text-[#1a1210]">{chosen === 0 ? "Top pick" : `Pick ${chosen + 1} of ${stop.options.length}`}</span>
           <div className="absolute inset-x-4 bottom-3">
             <h3 className="text-[1.6rem] text-[#faf6f1] drop-shadow">{o.name}</h3>
             {o.mentions >= 2 ? (
@@ -122,15 +123,15 @@ export function StopTicket({ stop, chosen, active, onSelect, onChoose }: { stop:
           ))}
         </p>
       )}
-      {others.length > 0 && (
+      {rows.length > 1 && (
         <>
           <div className="perf mx-4" />
           <div className="px-4 pb-3 pt-3">
-            <p className="kicker text-gold-text">More top picks</p>
-            <ul className="mt-1">
-              {others.map(({ x, j }) => (
-                <li key={x.id} className="border-b border-line last:border-0">
-                  <button type="button" onClick={() => onChoose(j)} className="flex w-full items-center gap-3 py-2.5 text-left transition hover:bg-[rgba(201,160,99,0.08)]" aria-label={`Make ${x.name} the pick for ${stop.role}`}>
+            <p className="kicker text-gold-text">Top picks · tap one to hear about it</p>
+            <ul className="mt-1 space-y-1">
+              {rows.map(({ x, j }) => (
+                <li key={x.id}>
+                  <button type="button" onClick={() => onChoose(j)} aria-current={j === chosen} className={`flex w-full items-center gap-3 rounded-xl border-2 px-2 py-2 text-left transition ${j === chosen ? "border-gold bg-[rgba(201,160,99,0.14)]" : "border-transparent hover:bg-[rgba(201,160,99,0.08)]"}`} aria-label={`Show ${x.name}`}>
                     <span className="relative size-14 shrink-0 overflow-hidden rounded-xl border-2 border-gold bg-sunk">
                       {!badPhoto[x.id] && (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -144,7 +145,7 @@ export function StopTicket({ stop, chosen, active, onSelect, onChoose }: { stop:
                         {[x.mentions >= 2 ? `Named by ${x.mentions} guides` : "", x.openNow === "open" ? "Open now" : x.openNow === "closed" ? "Closed now" : "", x.rating, x.why].filter(Boolean).join(" · ")}
                       </span>
                     </span>
-                    <ChevronRight className="size-5 shrink-0 text-gold-text" aria-hidden />
+                    {j === chosen ? <span className="kicker shrink-0 rounded-full bg-[#f0c98e] px-2 py-0.5 text-[#1a1210]">Showing</span> : <ChevronRight className="size-5 shrink-0 text-gold-text" aria-hidden />}
                   </button>
                 </li>
               ))}
