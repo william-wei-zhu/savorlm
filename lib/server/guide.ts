@@ -320,20 +320,20 @@ async function toOption(c: Candidate, pk: PickOpt | undefined, near: LatLng | nu
   const where = `${name}, ${pk?.address || c.area || ""} ${cityName}`.replace(/\s+/g, " ");
   // The top option gets a Places lookup (photo + maps link); the others are
   // geocoded from their address, which is far cheaper (see CLAUDE.md, quotas).
-  let at: { lat: number; lng: number; address: string; placeId: string | null; mapsUrl: string; website: string } | null = null;
+  let at: { lat: number; lng: number; address: string; placeId: string | null; photo: string | null; mapsUrl: string; website: string } | null = null;
   if (full) {
     const f = await locate(where, near ?? undefined);
-    if (f) at = { lat: f.lat, lng: f.lng, address: f.address, placeId: f.placeId, mapsUrl: f.mapsUrl, website: f.website };
+    if (f) at = { lat: f.lat, lng: f.lng, address: f.address, placeId: f.placeId, photo: f.photo, mapsUrl: f.mapsUrl, website: f.website };
   }
   // Fallbacks (also when the Places daily cap is reached): geocode the stated
   // address, then the name in the city.
   if (!at && pk?.address) {
     const g = await geocode(`${pk.address}, ${cityName}`);
-    if (g) at = { ...g, placeId: null, mapsUrl: "", website: "" };
+    if (g) at = { ...g, placeId: null, photo: null, mapsUrl: "", website: "" };
   }
   if (!at) {
     const g = await geocode(`${name}, ${c.area ? `${c.area}, ` : ""}${cityName}`);
-    if (g) at = { ...g, placeId: null, mapsUrl: "", website: "" };
+    if (g) at = { ...g, placeId: null, photo: null, mapsUrl: "", website: "" };
   }
   if (!at) return null;
   const urls = new Set([...c.evidence.map((e) => e.url), ...c.urls]);
@@ -354,6 +354,7 @@ async function toOption(c: Candidate, pk: PickOpt | undefined, near: LatLng | nu
     lat: at.lat,
     lng: at.lng,
     placeId: at.placeId,
+    photo: at.photo,
     mapsUrl: at.mapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${name} ${at.address || cityName}`)}`,
     website: at.website,
     phone: pk?.phone ?? "",

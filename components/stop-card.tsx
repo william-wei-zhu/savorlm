@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { Footprints, CarTaxiFront, MapPin, Phone, CalendarCheck, Star, ShieldCheck, Heart, ChevronRight } from "lucide-react";
 import { photoSrc, type Option, type StopCard as Stop } from "@/lib/guide/scene";
+import { Photo } from "./photo";
 
 export function Hop({ hop }: { hop: NonNullable<Stop["hop"]> }) {
   const Icon = hop.mode === "walk" ? Footprints : CarTaxiFront;
@@ -39,7 +39,6 @@ function Status({ o }: { o: Option }) {
  * top options as rows. Tapping a row makes it the pick and flies the map there.
  */
 export function StopTicket({ stop, chosen, active, onSelect, onChoose }: { stop: Stop; chosen: number; active: boolean; onSelect: () => void; onChoose: (j: number) => void }) {
-  const [badPhoto, setBadPhoto] = useState<Record<string, boolean>>({});
   const o = stop.options[chosen] ?? stop.options[0];
   // All four options as a fixed list (William: the list must never reshuffle when one is tapped).
   const rows = stop.options.map((x, j) => ({ x, j }));
@@ -47,16 +46,7 @@ export function StopTicket({ stop, chosen, active, onSelect, onChoose }: { stop:
     <article className={`ticket rise overflow-hidden transition-[outline] ${active ? "outline-2 outline-offset-2 outline-gold" : ""}`}>
       <button type="button" onClick={onSelect} className="block w-full text-left" aria-label={`Show ${o.name} on the map`}>
         <div className="relative h-44 bg-sunk">
-          {!badPhoto[o.id] ? (
-            // Google-hosted photo via our redirect (by place id, or looked up
-            // by name + address for the other options); nothing is stored.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img key={o.id} src={photoSrc(o)} alt="" loading="lazy" className="h-full w-full object-cover" onError={() => setBadPhoto((b) => ({ ...b, [o.id]: true }))} />
-          ) : (
-            <div className="grid h-full place-items-center bg-[radial-gradient(circle_at_50%_40%,#3a2a22,#1a1210)]">
-              <MapPin className="size-10 text-gold-text" aria-hidden />
-            </div>
-          )}
+          <Photo src={photoSrc(o)} className="absolute inset-0 h-full w-full" />
           <div className="absolute inset-0 bg-gradient-to-t from-[#120d0b] via-[#120d0b]/45 to-transparent" />
           <span className="kicker absolute left-3 top-3 rounded-full border border-[#c9a063] bg-[#120d0b] px-3 py-1 text-[#f3d9ad]">{stop.role}</span>
           <span className="kicker absolute right-3 top-3 rounded-full bg-[#f0c98e] px-3 py-1 text-[#1a1210]">{chosen === 0 ? "Top pick" : `Pick ${chosen + 1} of ${stop.options.length}`}</span>
@@ -133,10 +123,7 @@ export function StopTicket({ stop, chosen, active, onSelect, onChoose }: { stop:
                 <li key={x.id}>
                   <button type="button" onClick={() => onChoose(j)} aria-current={j === chosen} className={`flex w-full items-center gap-3 rounded-xl border-2 px-2 py-2 text-left transition ${j === chosen ? "border-gold bg-[rgba(201,160,99,0.14)]" : "border-transparent hover:bg-[rgba(201,160,99,0.08)]"}`} aria-label={`Show ${x.name}`}>
                     <span className="relative size-14 shrink-0 overflow-hidden rounded-xl border-2 border-gold bg-sunk">
-                      {!badPhoto[x.id] && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={photoSrc(x, 160)} alt="" loading="lazy" className="h-full w-full object-cover" onError={() => setBadPhoto((b) => ({ ...b, [x.id]: true }))} />
-                      )}
+                      <Photo src={photoSrc(x, 160)} className="absolute inset-0 h-full w-full" iconClass="size-5" />
                       <span className="absolute bottom-0.5 left-0.5 grid size-6 place-items-center rounded-full bg-[#120d0b] text-[0.8rem] font-extrabold text-[#f3d9ad]">{j + 1}</span>
                     </span>
                     <span className="min-w-0 flex-1">

@@ -27,6 +27,8 @@ export type Option = {
   lng: number;
   /** Google place id when known (photo + maps link); only the top option is looked up. */
   placeId: string | null;
+  /** Google Places photo name when locate already returned one (one call to show it). */
+  photo: string | null;
   mapsUrl: string;
   website: string;
   phone: string;
@@ -38,7 +40,8 @@ export type Option = {
 };
 
 /** Photo URL for an option: by place id when known, else looked up by name + address on demand. */
-export function photoSrc(o: Pick<Option, "placeId" | "name" | "address">, w: 160 | 800 = 800): string {
+export function photoSrc(o: Pick<Option, "placeId" | "photo" | "name" | "address">, w: 160 | 800 = 800): string {
+  if (o.photo) return `/api/photo?ref=${encodeURIComponent(o.photo)}${w === 160 ? "&w=160" : ""}`;
   if (o.placeId) return `/api/photo?pid=${encodeURIComponent(o.placeId)}${w === 160 ? "&w=160" : ""}`;
   return `/api/photo?q=${encodeURIComponent(`${o.name}, ${o.address}`.slice(0, 200))}${w === 160 ? "&w=160" : ""}`;
 }
