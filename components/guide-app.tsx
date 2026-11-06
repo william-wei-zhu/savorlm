@@ -561,6 +561,30 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
 
   const poke = () => !speaking && gesture("laugh", "listen", 1300);
 
+  const allCities = () => {
+    reset();
+    window.history.pushState(null, "", "/");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+
+  /** The city picker: big in the desktop panel, compact above the map on phones. */
+  const citySelect = (id: string, cls: string) => (
+    <div className={`relative min-w-0 flex-1 ${cls.includes("mt-") ? "mt-1" : ""}`}>
+      <select id={id} value={city} onChange={(e) => pickCity(e.target.value as CityId)} aria-label="City" className={`w-full cursor-pointer appearance-none rounded-xl border-2 border-gold bg-surface pl-3 pr-10 font-display font-bold text-ink ${cls.replace("mt-1", "")}`}>
+        {REGIONS.map((r) => (
+          <optgroup key={r} label={r}>
+            {CITY_IDS.filter((c) => CITIES[c].region === r).map((c) => (
+              <option key={c} value={c}>
+                {CITIES[c].name}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+      <ChevronRight className="pointer-events-none absolute right-3 top-1/2 size-5 -translate-y-1/2 rotate-90 text-gold-text" aria-hidden />
+    </div>
+  );
+
   return (
     <div className="grid min-h-dvh grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(25rem,32rem)_minmax(0,1fr)]">
       {intro && <Intro />}
@@ -629,7 +653,20 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           <Link href="/settings" className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk lg:size-11" aria-label="Settings" title="Settings">
             <Settings className="size-5" />
           </Link>
-          <p className="basis-full text-[0.92rem] leading-snug text-gold-text lg:hidden">{TAGLINE}</p>
+          {/* Phones: a compact city bar above the map (the tagline is desktop-only). */}
+          {!landing && (
+            <div className="flex basis-full items-center gap-2 pt-1 lg:hidden">
+              <button type="button" onClick={allCities} className="btn shrink-0 border-2 border-gold py-1.5 pl-2 pr-3 text-[0.9rem] text-ink hover:bg-sunk">
+                <ChevronLeft className="size-4" aria-hidden /> All cities
+              </button>
+              {citySelect("city-m", "py-1.5 text-[1.15rem]")}
+              {turns.length > 0 && (
+                <button type="button" onClick={reset} className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk" aria-label="New plan" title="New plan">
+                  <RotateCcw className="size-4" aria-hidden />
+                </button>
+              )}
+            </div>
+          )}
         </header>
 
         {/* The panel: the ask, the picks, the footer. */}
@@ -648,32 +685,15 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           </div>
         ) : (
           <>
-        <div className="flex items-end gap-3 px-6 pb-2 pt-3 lg:pt-4">
+        <div className="hidden items-end gap-3 px-6 pb-2 pt-4 lg:flex">
           <div className="min-w-0 flex-1">
             <label htmlFor="city" className="kicker text-gold-text">
               Tonight in
             </label>
-            <button type="button" onClick={() => {
-                reset();
-                window.history.pushState(null, "", "/");
-                window.dispatchEvent(new PopStateEvent("popstate"));
-              }} className="btn ml-3 border-2 border-gold py-0.5 pl-2 pr-3 text-[0.9rem] text-ink hover:bg-sunk">
+            <button type="button" onClick={allCities} className="btn ml-3 border-2 border-gold py-0.5 pl-2 pr-3 text-[0.9rem] text-ink hover:bg-sunk">
               <ChevronLeft className="size-4" aria-hidden /> All cities
             </button>
-            <div className="relative mt-1">
-              <select id="city" value={city} onChange={(e) => pickCity(e.target.value as CityId)} className="w-full cursor-pointer appearance-none rounded-xl border-2 border-gold bg-surface py-2 pl-3 pr-10 font-display text-[1.45rem] font-bold text-ink">
-                {REGIONS.map((r) => (
-                  <optgroup key={r} label={r}>
-                    {CITY_IDS.filter((c) => CITIES[c].region === r).map((c) => (
-                      <option key={c} value={c}>
-                        {CITIES[c].name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-              <ChevronRight className="pointer-events-none absolute right-3 top-1/2 size-5 -translate-y-1/2 rotate-90 text-gold-text" aria-hidden />
-            </div>
+            {citySelect("city", "mt-1 py-2 text-[1.45rem]")}
           </div>
           {turns.length > 0 && (
             <button type="button" onClick={reset} className="btn border-2 border-gold py-2.5 text-ink hover:bg-sunk">
