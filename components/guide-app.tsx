@@ -78,6 +78,8 @@ export function GuideApp({ initialCity }: { initialCity?: CityId }) {
   const [landing, setLanding] = useState(!initialCity);
   const landingRef = useRef(!initialCity);
   const hushed = useRef(-1); // run id the user silenced with "Stop talking"
+  const talking = useRef<Promise<void>>(Promise.resolve()); // what Savvy is saying now
+  const userTook = useRef(0); // bumps when the user taps an option (takes over the voice)
   const [pose, setPose] = useState<Pose>("wave");
   const [speaking, setSpeaking] = useState(false);
   const [caption, setCaption] = useState(initialCity ? "Hi, I'm Savvy! Tell me what you're craving and I'll plan the whole evening." : "Hi, I'm Savvy! Pick a city and I'll find the places locals love.");
@@ -220,8 +222,8 @@ export function GuideApp({ initialCity }: { initialCity?: CityId }) {
     [drawPins],
   );
 
-  /** Make another option the pick for a stop; travel times follow. */
-  const choose = useCallback(
+  /** Show an option as the stop's pick (card, pins, map); travel times follow. */
+  const showOption = useCallback(
     (stopIdx: number, j: number) => {
       choiceRef.current = { ...choiceRef.current, [stopIdx]: j };
       setChoice(choiceRef.current);
@@ -229,17 +231,24 @@ export function GuideApp({ initialCity }: { initialCity?: CityId }) {
       stopsRef.current = stopsRef.current.map((s, i) => (i === 0 ? s : { ...s, hop: hopBetween(pickOf(stopsRef.current[i - 1], ch), pickOf(s, ch)) }));
       setStops(stopsRef.current);
       focusStop(stopIdx);
-      // Savvy introduces the option the user picked (a new run: it replaces whatever he was saying).
-      const o = stopsRef.current[stopIdx]?.options[j];
-      if (o) {
-        audio?.stopVoice();
-        const id = ++run.current;
-        void say(o.intro || `${o.name}. ${o.why}`, j < 3 ? "point" : "talk", id, "warm").then(() => {
-          if (id === run.current) gesture("listen", "listen");
-        });
-      }
     },
-    [focusStop, say, gesture],
+    [focusStop],
+  );
+
+  /** The user taps an option: it becomes the pick and Savvy talks about that one (the tour keeps loading). */
+  const choose = useCallback(
+    (stopIdx: number, j: number) => {
+      showOption(stopIdx, j);
+      const o = stopsRef.current[stopIdx]?.options[j];
+      if (!o) return;
+      userTook.current++;
+      audio?.stopVoice();
+      const id = run.current;
+      talking.current = say(o.intro || `${o.name}. ${o.why}`, "point", id, "warm").then(() => {
+        if (id === run.current) gesture("listen", "listen");
+      });
+    },
+    [showOption, say, gesture],
   );
 
   const send = useCallback(
@@ -298,7 +307,14 @@ export function GuideApp({ initialCity }: { initialCity?: CityId }) {
         }
       })();
 
-      let speech: Promise<void> = Promise.resolve();
+      talking.current = Promise.resolve();
+      // Wait until Savvy is done, including anything a tap started meanwhile.
+      const settle = async () => {
+        for (let p = talking.current; ; p = talking.current) {
+          await p;
+          if (p === talking.current) return;
+        }
+      };
       const picked: string[] = [];
       let lastLine = "";
       for (;;) {
@@ -307,13 +323,13 @@ export function GuideApp({ initialCity }: { initialCity?: CityId }) {
         if (e.t === "say") {
           setStatus("touring");
           lastLine = e.text;
-          speech = say(e.text, e.pose === "think" ? "wow" : e.pose, id, "excited").then(() => {
+          talking.current = say(e.text, e.pose === "think" ? "wow" : e.pose, id, "excited").then(() => {
             if (id === run.current) gesture("look", "look");
           });
         } else if (e.t === "fly") {
           await map.current?.fly(e.shot);
         } else if (e.t === "stop") {
-          await speech;
+          await settle();
           if (id !== run.current) break;
           stopsRef.current = [...stopsRef.current, e.stop];
           setStops(stopsRef.current);
@@ -323,17 +339,31 @@ export function GuideApp({ initialCity }: { initialCity?: CityId }) {
           await map.current?.fly(e.shot);
           audio?.chime();
           picked.push(`${e.stop.options[0].name} (${e.stop.role})`);
-          speech = say(e.stop.line, e.stop.options[0].mentions >= 2 ? "wow" : "point", id, "warm").then(() => {
-            if (id === run.current) gesture("think", "think");
-          });
+          // One option at a time: Savvy introduces the top three in turn, the
+          // card and map following him; a tap on any option takes over.
+          const stop = e.stop;
+          const took = userTook.current;
+          talking.current = (async () => {
+            const n = Math.min(3, stop.options.length);
+            for (let j = 0; j < n; j++) {
+              if (id !== run.current || userTook.current !== took) return;
+              if (j > 0) showOption(stop.index, j);
+              const o = stop.options[j];
+              await say(o.intro || `${o.name}. ${o.why}`, j === 0 && o.mentions >= 2 ? "wow" : "point", id, "warm");
+            }
+            if (id === run.current && userTook.current === took) {
+              if (n > 1) showOption(stop.index, 0); // back to Savvy's pick
+              gesture("think", "think");
+            }
+          })();
         } else if (e.t === "done") {
-          await speech;
+          await settle();
           if (e.title) setTitle(e.title);
           if (e.text) await say(e.text, "dance", id, "cozy");
           if (id === run.current && picked.length) gesture("cheer", "listen", 1900);
           setTurns((t) => [...t, { role: "guide", text: picked.length ? `I picked ${picked.join(", then ")}.` : lastLine }]);
         } else if (e.t === "error") {
-          await speech;
+          await settle();
           await say(e.text, "listen", id, "warm");
         }
       }
@@ -342,7 +372,7 @@ export function GuideApp({ initialCity }: { initialCity?: CityId }) {
         setPose((p) => (p === "talk" || p === "think" || p === "look" ? "listen" : p));
       }
     },
-    [city, turns, say, unlock, gesture, drawPins],
+    [city, turns, say, unlock, gesture, drawPins, showOption],
   );
 
   const listen = useCallback(async () => {
