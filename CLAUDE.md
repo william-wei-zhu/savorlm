@@ -89,6 +89,9 @@ William 2026-11-06: every request returns exactly ONE stop card with 4 picks (to
 - Named events via `track()` in `lib/analytics.ts` (typed): `city_picked {city, from}`, `search_sent {city, via: typed|idea|voice}`, `list_shown {city, picks, top_mentions}`, `pick_tapped {city, pick}`, `list_shared {city, method}`, `talk_started {city}`, `voice_toggled {on}`. Never send the request text, transcripts or anything personal. The privacy page discloses this.
 - Env: `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST` (Vercel production + development, `.env.local`). Without the key, nothing loads.
 
+## Decided against
+- Google sign-in, a search wall and saved places were considered on 2026-11-06 and deliberately skipped (account-free by choice; share links cover keeping a list). Don't build them unless William asks again.
+
 ## Guards
 `lib/server/guard.ts`: per-IP burst, per-IP daily, global daily budget per kind (guide 1500, hear 2000, tts 8000, photo 4000), trusted client IP, strict origin. Fails closed in production without Firestore. Photos via `/api/photo` (302 to a Google-hosted URI).
 
