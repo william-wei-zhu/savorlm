@@ -99,7 +99,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   const threadRef = useRef<Exchange[]>(thread);
   const [openIdx, setOpenIdx] = useState(0);
   const openRef = useRef(0);
-  const chatId = useRef(newChatId());
+  const chatId = useRef(""); // made on first save (no randomness during prerender)
   const [next, setNext] = useState<string[]>([]);
   const nextRef = useRef<string[]>([]);
   const [reply, setReply] = useState(""); // Savvy's line for an answer without a list (small talk, errors)
@@ -210,7 +210,9 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   /** Save this chat to the browser's recent chats (only chats with a list are kept). */
   const persist = useCallback(() => {
     const t = liveThread();
-    if (t.length) setRecent(saveChat({ id: chatId.current, city: cityRef.current, updatedAt: Date.now(), thread: t }));
+    if (!t.length) return;
+    chatId.current ||= newChatId();
+    setRecent(saveChat({ id: chatId.current, city: cityRef.current, updatedAt: Date.now(), thread: t }));
   }, [liveThread]);
 
   /** End this chat (it stays in Recent) and drop the answer: request, voice, picks, title, share link and pins. */
@@ -220,7 +222,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
     run.current++;
     audio?.stopVoice();
     putThread([], 0);
-    chatId.current = newChatId();
+    chatId.current = "";
     loadLive(null);
     setStreaming(false);
     setStatus("idle");
