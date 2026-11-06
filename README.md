@@ -1,36 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+<p align="center">
+  <img src="app/opengraph-image.png" alt="SavorLM" width="520" />
+</p>
 
-## Getting Started
+<h1 align="center">SavorLM</h1>
+<p align="center">Your raccoon guide to Michelin nights out. <a href="https://savorlm.com">savorlm.com</a></p>
 
-First, run the development server:
+Tell Savvy what you're craving ("my anniversary in North Beach: a starred dinner, then cocktails"), by voice or by typing. He plans the evening around Michelin Guide restaurants and the best places nearby, then walks you through it on the map: he talks while the camera moves, every stop lands as a ticket with live hours, a calibrated fit check, and its sources.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Why it's built this way
+
+| Decision | Why |
+| --- | --- |
+| **Store almost nothing.** A 230 KB Michelin "spine" (name, distinction, location) is the only restaurant data. | The previous version kept 6,700 scraped dishes in Postgres + pgvector. It went stale and cost money idle. Live search is fresher and free when nobody is using it. |
+| **Live data from Exa at request time** (hours, open now, ratings, menus, news). | One search call returns venue pages with hours and contact details, so Savvy can check a place is open before recommending it. Cached a few hours. |
+| **Fit claims checked by TypeSafe Jev**, not by the LLM. | "Date-night vibe 83%" is a calibrated yes/no over the sources. Below 60%, no badge. The language model never asserts a fit on its own. |
+| **A fixed pipeline, not a free-running agent loop**: plan, gather, judge, pick. | A known number of calls per tour, predictable cost, and the first stop streams in ~7 s while the rest load near it. |
+| **Michelin-first, open-world around it.** | Michelin is the trust signal; bars, coffee and dessert come from the open web near the first stop, in any city. |
+| **2D map by default, 3D on request**, with hard Google quota caps. | Same per-load price, but 3D has half the free tier. Caps keep the bill at $0. |
+
+## Architecture
+
+```
+browser ──(text or voice)──▶ /api/hear (Gemini transcription)
+   │
+   └──▶ /api/guide  (server-sent events: say · fly · stop · done)
+          1. plan    Gemini 3.8 Flash, structured output
+          2. gather  Michelin spine filter ─┬─▶ Exa search (live evidence)
+                                            └─▶ Exa search near the last stop (open world)
+          3. judge   TypeSafe Jev: yes / no / unknown + confidence per check
+          4. pick    Gemini: one place per stop, spoken line, facts from evidence only
+   │
+   ├──▶ /api/tts    Gemini TTS, streamed PCM (Savvy starts talking in ~0.5 s)
+   └──▶ /api/photo  Google Places photo redirect (nothing stored)
+
+Firestore: short-lived cache + per-IP / global daily budgets (TTL deletes both)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Stack
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Next.js 16 on Vercel · Gemini (planning, narration, voice, transcription) · Exa · TypeSafe Jev · Google Maps JS (2D + photorealistic 3D) and Places · Firestore. Savvy's art is generated with Gemini image and animated with a frame rig (gestures, lip flap, blinks, two-frame cycles) that responds to his own voice loudness.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Run it
 
-## Learn More
+```bash
+cp .env.example .env.local   # fill in your keys
+npm install
+npm run dev
+npm test
+```
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Built by [William Zhu](https://www.linkedin.com/in/william-wei-zhu/).

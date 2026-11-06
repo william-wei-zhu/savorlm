@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# raw generated art (regenerate with art/*.py); keep the scripts and the reference
+/art/poses/
+/art/poses_v1/
+/art/candidates/*
+!/art/candidates/savvy-ref.png
+/.playwright-mcp/
+!.env.example
