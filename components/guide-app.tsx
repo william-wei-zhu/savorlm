@@ -452,11 +452,13 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           })();
         } else if (e.t === "done") {
           await settle();
+          if (id !== run.current) break; // a new request or city took over
           if (e.text) await say(e.text, "dance", id, "cozy");
           if (id === run.current && picked.length) gesture("cheer", "listen", 1900);
           setTurns((t) => [...t, { role: "guide", text: picked.length ? `My top pick: ${picked[0]}.` : lastLine }]);
         } else if (e.t === "error") {
           await settle();
+          if (id !== run.current) break;
           await say(e.text, "listen", id, "warm");
         }
       }
