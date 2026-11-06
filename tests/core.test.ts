@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { km, hop, stopShot, walkMinutes, bearing } from "@/lib/guide/geo";
 import { badgeFrom, fitScore, MIN_P } from "@/lib/guide/checks";
 import { CITIES, CITY_IDS, SLUG_ALIASES, cityBySlug, cityForTz } from "@/lib/cities";
-import { mergeMentions, normName, popularity, isRoundup } from "@/lib/guide/consensus";
+import { displayName, mergeMentions, normName, popularity, isRoundup } from "@/lib/guide/consensus";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { sse, sseParser, type SceneEvent } from "@/lib/guide/scene";
@@ -164,5 +164,18 @@ describe("speech + guards", () => {
     expect(sameOrigin(new Headers({ origin: "https://evil-savorlm.com", host: "savorlm.com" }), true)).toBe(false);
     expect(sameOrigin(new Headers({ origin: "http://localhost:3000", host: "x" }), true)).toBe(false);
     expect(sameOrigin(new Headers({ "sec-fetch-site": "cross-site" }), true)).toBe(false);
+  });
+});
+
+describe("displayName", () => {
+  it("drops page-title location suffixes", () => {
+    expect(displayName("Hattie B's Hot Chicken - Nashville - Lower Broadway")).toBe("Hattie B's Hot Chicken");
+    expect(displayName("Franklin Barbecue | Austin, TX")).toBe("Franklin Barbecue");
+    expect(displayName("Joe's Stone Crab (Miami Beach)")).toBe("Joe's Stone Crab");
+  });
+  it("keeps real names intact", () => {
+    expect(displayName("Bolton's Spicy Chicken & Fish")).toBe("Bolton's Spicy Chicken & Fish");
+    expect(displayName("Kuya-Ja's Lechon Belly")).toBe("Kuya-Ja's Lechon Belly");
+    expect(displayName("LeRoy and Lewis Barbecue")).toBe("LeRoy and Lewis Barbecue");
   });
 });

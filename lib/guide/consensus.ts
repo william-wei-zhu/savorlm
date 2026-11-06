@@ -17,6 +17,16 @@ export type Consensus = {
 
 const LEADING = /^(the|la|le|el|il)\s+/;
 
+/**
+ * A venue's display name without page-title noise: "Hattie B's Hot Chicken -
+ * Nashville - Lower Broadway" -> "Hattie B's Hot Chicken". Cuts at the first
+ * spaced dash or bar, and drops a trailing "(Midtown)" location note.
+ */
+export function displayName(s: string): string {
+  const head = s.split(/\s+[-–—|]\s+|\s*[|•·]\s*/)[0].replace(/\s*\([^)]*\)\s*$/, "").trim();
+  return head.length >= 2 ? head : s.trim();
+}
+
 /** Comparable venue name: no accents, case, punctuation, "the", or "restaurant/bar" suffixes. */
 export function normName(s: string): string {
   return s
