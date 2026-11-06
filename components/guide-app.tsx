@@ -567,7 +567,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
 
       {/* The map with Savvy standing on it (desktop). On phones the map sits
           between the header and the panel, and is hidden while choosing a city. */}
-      <section className={`relative order-1 ${stops.length || busy ? "h-[34dvh]" : "h-[22dvh]"} transition-[height] duration-500 lg:sticky lg:top-0 lg:order-2 lg:block lg:h-dvh lg:self-start ${landing ? "hidden" : ""}`} aria-label="Map">
+      <section className={`relative order-1 ${stops.length || busy ? "h-[48dvh]" : "h-[36dvh]"} transition-[height] duration-500 lg:sticky lg:top-0 lg:order-2 lg:block lg:h-dvh lg:self-start ${landing ? "hidden" : ""}`} aria-label="Map">
         <MapView ref={map} className="absolute inset-0" initial={landing ? US_VIEW : center(city)} onPick={(i) => (landingRef.current ? pickCity(CITY_IDS[i]) : focusStop(i))} />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 hidden items-end gap-3 p-6 lg:flex">
           <div className="savvy-stage pointer-events-auto w-56 shrink-0 xl:w-64 2xl:w-72">
