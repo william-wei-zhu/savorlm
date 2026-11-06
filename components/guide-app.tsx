@@ -567,10 +567,10 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
 
-  /** The city picker: big in the desktop panel, compact above the map on phones. */
+  /** The city picker in the header's city bar. */
   const citySelect = (id: string, cls: string) => (
-    <div className={`relative min-w-0 flex-1 ${cls.includes("mt-") ? "mt-1" : ""}`}>
-      <select id={id} value={city} onChange={(e) => pickCity(e.target.value as CityId)} aria-label="City" className={`w-full cursor-pointer appearance-none rounded-xl border-2 border-gold bg-surface pl-3 pr-10 font-display font-bold text-ink ${cls.replace("mt-1", "")}`}>
+    <div className="relative min-w-0 flex-1">
+      <select id={id} value={city} onChange={(e) => pickCity(e.target.value as CityId)} aria-label="City" className={`w-full cursor-pointer appearance-none rounded-xl border-2 border-gold bg-surface pl-3 pr-10 font-display font-bold text-ink ${cls}`}>
         {REGIONS.map((r) => (
           <optgroup key={r} label={r}>
             {CITY_IDS.filter((c) => CITIES[c].region === r).map((c) => (
@@ -639,7 +639,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
       {/* The left column: a printed evening menu. On phones it dissolves
           (display: contents) so the header sits above the map and the panel below. */}
       <div className="menu contents lg:order-1 lg:flex lg:min-h-dvh lg:flex-col">
-        <header className="menu-part order-0 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 px-5 pb-3 pt-4 lg:flex-nowrap lg:gap-x-3 lg:px-6 lg:pt-6">
+        <header className="menu-part order-0 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 px-5 pb-3 pt-4 lg:gap-x-3 lg:gap-y-2.5 lg:px-6 lg:pt-6">
           <div className="rounded-full border-2 border-gold p-1">
             <Image src="/savvy/avatar.webp" alt="" width={64} height={64} className="size-9 rounded-full bg-[#2a211d] sm:size-10 lg:size-14" />
           </div>
@@ -652,13 +652,13 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           <Link href="/settings" className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk lg:size-11" aria-label="Settings" title="Settings">
             <Settings className="size-5" />
           </Link>
-          {/* Phones: a compact city bar above the map (the tagline is desktop-only). */}
+          {/* The city bar: compact, in the header (above the map on phones). */}
           {!landing && (
-            <div className="flex basis-full items-center gap-2 pt-1 lg:hidden">
+            <div className="flex basis-full items-center gap-2 pt-1">
               <button type="button" onClick={allCities} className="btn shrink-0 border-2 border-gold py-1.5 pl-2 pr-3 text-[0.9rem] text-ink hover:bg-sunk">
                 <ChevronLeft className="size-4" aria-hidden /> All cities
               </button>
-              {citySelect("city-m", "py-1.5 text-[1.15rem]")}
+              {citySelect("city", "py-1.5 text-[1.15rem]")}
               {turns.length > 0 && (
                 <button type="button" onClick={reset} className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk" aria-label="New plan" title="New plan">
                   <RotateCcw className="size-4" aria-hidden />
@@ -684,23 +684,6 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           </div>
         ) : (
           <>
-        <div className="hidden items-end gap-3 px-6 pb-2 pt-4 lg:flex">
-          <div className="min-w-0 flex-1">
-            <label htmlFor="city" className="kicker text-gold-text">
-              Tonight in
-            </label>
-            <button type="button" onClick={allCities} className="btn ml-3 border-2 border-gold py-0.5 pl-2 pr-3 text-[0.9rem] text-ink hover:bg-sunk">
-              <ChevronLeft className="size-4" aria-hidden /> All cities
-            </button>
-            {citySelect("city", "mt-1 py-2 text-[1.45rem]")}
-          </div>
-          {turns.length > 0 && (
-            <button type="button" onClick={reset} className="btn border-2 border-gold py-2.5 text-ink hover:bg-sunk">
-              <RotateCcw className="size-4" aria-hidden /> New plan
-            </button>
-          )}
-        </div>
-
         {/* The ask: the first thing in the menu, by voice or by typing. */}
         <form
           key={`ask-${city}`}
