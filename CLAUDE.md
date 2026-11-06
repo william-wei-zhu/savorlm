@@ -73,6 +73,7 @@ William 2026-11-06: every request returns exactly ONE stop card with 4 picks (to
 ## Design
 - An evening menu: the side panel (`.menu`) is always espresso + gold in both themes (deliberate). Fraunces / Figtree 600 / DM Mono. Component classes live in `@layer components` so utilities can override them.
 - The header holds the logo, name, mute, settings and a compact city bar ("All cities" pill, small city select, New plan icon) on every screen size (William 2026-11-06: no "Tonight in" row in the panel). Ask box (2-row textarea + send + "Or just talk to Savvy") is the first thing in the panel. Tickets: the option on show with photo, "Top pick" / "Pick N of 4", "Local favorite · named by N guides", why, facts, Jev badges, Reserve / Directions / Call, sources (supporting pages first, then the lists that named it), then the fixed "Top picks · tap one to hear about it" list of all four with photo thumbnails and a "Showing" highlight. List title + "Share this list" above the tickets.
+- Switching cities (picker or browser back/forward) clears the answer via `clearAnswer()` (request, voice, picks, title, share link, pins) and Savvy greets the new city; `reset()` (New plan) uses the same helper.
 - Tagline: "Your foodie guide to the city's best dining spots".
 - The whole page scrolls (William, 2026-11-06: do not freeze the top of the panel); on desktop the map column is `sticky top-0 h-dvh self-start` so it stays in view.
 - Desktop (`lg`+): Savvy + speech bubble (with onboarding buttons) stand inside the sticky map, sizes `w-56 xl:w-64 2xl:w-72`.

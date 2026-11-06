@@ -149,8 +149,33 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
     return () => clearTimeout(t);
   }, [landing]);
 
+  /** Drop the current answer: request, voice, picks, list title, share link and pins. */
+  const clearAnswer = useCallback(() => {
+    abort.current?.abort();
+    run.current++;
+    audio?.stopVoice();
+    setTurns([]);
+    setStops([]);
+    stopsRef.current = [];
+    choiceRef.current = {};
+    setChoice({});
+    setTitle("");
+    setShareId(null);
+    setStreaming(false);
+    setActive(null);
+    setStatus("idle");
+    setSpeaking(false);
+    map.current?.setStops([], null);
+  }, []);
+
   /** Picking a city moves to its own URL without reloading (shareable links). */
   const pickCity = useCallback((c: CityId) => {
+    // Another city starts fresh: the old city's picks and Savvy's last line go,
+    // and he greets the new city.
+    if (!landingRef.current && c !== cityRef.current) {
+      clearAnswer();
+      setGreet((g) => g + 1);
+    }
     setCity(c);
     if (landingRef.current) {
       landingRef.current = false;
@@ -166,7 +191,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
       window.history.pushState(null, "", `/${CITIES[c].slug}`);
       document.title = `${NAME} ${CITIES[c].name}: ${TAGLINE}`;
     } catch {}
-  }, []);
+  }, [clearAnswer]);
 
   // Back / forward between city URLs.
   useEffect(() => {
@@ -182,13 +207,17 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
       }
       const c = CITY_IDS.find((x) => CITIES[x].slug === slug);
       if (c) {
+        if (!landingRef.current && c !== cityRef.current) {
+          clearAnswer();
+          setGreet((g) => g + 1);
+        }
         setCity(c);
         document.title = `${NAME} ${CITIES[c].name}: ${TAGLINE}`;
       }
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, []);
+  }, [clearAnswer]);
 
   useEffect(() => {
     if (!landingRef.current) map.current?.fly(cityShot(center(city)));
@@ -529,23 +558,9 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   };
 
   const reset = () => {
-    abort.current?.abort();
-    run.current++;
-    audio?.stopVoice();
-    setTurns([]);
-    setStops([]);
-    stopsRef.current = [];
-    choiceRef.current = {};
-    setChoice({});
-    setTitle("");
-    setShareId(null);
-    setStreaming(false);
-    setActive(null);
-    setStatus("idle");
-    setSpeaking(false);
+    clearAnswer();
     gesture("wave", "listen", 2400);
     setCaption("Fresh page. Where are we eating?");
-    map.current?.setStops([], null);
     map.current?.fly(cityShot(center(city)));
   };
 
