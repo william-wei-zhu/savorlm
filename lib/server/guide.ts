@@ -242,7 +242,7 @@ function rank(cands: Candidate[], checks: CheckId[]) {
 
 // ---- pick + narrate --------------------------------------------------------
 
-type PickOpt = { key: string; name: string; why: string; open_now: "open" | "closed" | "unknown"; hours: string; rating: string; phone: string; address: string; cuisine: string; price: string; source_urls: string[] };
+type PickOpt = { key: string; name: string; why: string; intro: string; open_now: "open" | "closed" | "unknown"; hours: string; rating: string; phone: string; address: string; cuisine: string; price: string; source_urls: string[] };
 type StopPick = { stop: number; line: string; options: PickOpt[] };
 type PickResult = { stops: StopPick[]; outro: string; title: string };
 
@@ -250,6 +250,7 @@ const OPT_PROPS = {
   key: { type: "STRING" },
   name: { type: "STRING" },
   why: { type: "STRING" },
+  intro: { type: "STRING" },
   open_now: { type: "STRING", enum: ["open", "closed", "unknown"] },
   hours: { type: "STRING" },
   rating: { type: "STRING" },
@@ -296,6 +297,7 @@ It is now ${nowIn(tz)} in ${cityName}.
 options: rank the candidates by key, best first: fit to the craving, budget and occasion first; then the user's checks (higher P(yes) is better); then how many independent sites named it (the city's favorites). Prefer places the evidence shows are open at the relevant time. Return 3 to 5 options when that many candidates fit (fewer only if the rest clearly don't fit). Each key at most once.
 line: what you say on arrival, walking the user through the TOP THREE options in order, max 65 words, spoken and natural, first person, like a friend who knows the city: lead with the first and why it wins, then the second and third in a phrase each ("If the line's too long, X is close by for ...; or Y for ..."). Use one concrete detail per place only if it is in the evidence. If 2 or more sites named a place you may call it a local favorite. Never invent dishes, prices or hours. ${NO_AWARDS} Never use an em-dash. No emoji.
 why (each option): max 14 words on what makes it great for this request, from the evidence. Same rules.
+intro (each option): what you would say if the user taps this option, max 30 words, spoken, first person, about this place alone (what it is, one detail from the evidence, and today's hours if known). Same rules.
 name: the venue's proper name (fix page-title noise).
 open_now: "open" or "closed" only if the evidence clearly states today's hours or its status now, else "unknown". hours: today's hours as stated, or "". rating: as stated with the review site the page names ("4.6 Google", "4.5 Yelp"), else ""; never a search engine or this app. phone, address: as stated, or "". cuisine: 1 to 3 words ("Texas barbecue"). price: "$" to "$$$$" if the evidence implies it, else "".
 source_urls: up to 2 URLs from that candidate's evidence that support what you said.
@@ -343,6 +345,7 @@ async function toOption(c: Candidate, pk: PickOpt | undefined, near: LatLng | nu
     id: keyOf(name, cityId),
     name,
     why: pk?.why ?? "",
+    intro: pk?.intro || `${name}${pk?.why ? `: ${pk.why.replace(/\.$/, "")}` : ""}.`,
     mentions: c.mentions,
     praisedBy: c.domains.slice(0, 6),
     cuisine: pk?.cuisine ?? "",

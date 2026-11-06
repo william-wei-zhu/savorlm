@@ -31,21 +31,45 @@ export async function locate(text: string, near?: { lat: number; lng: number }):
   }).catch((e) => (console.warn("locate failed", (e as Error).message), null));
 }
 
-/** A photo URI for a place (Google-hosted, short-lived), or null. */
-export async function photoUri(placeId: string): Promise<string | null> {
+async function mediaUri(photoName: string, width: number): Promise<string | null> {
+  const m = await fetch(`https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=${width}&skipHttpRedirect=true`, { headers: { "X-Goog-Api-Key": KEY() }, signal: AbortSignal.timeout(5000) });
+  if (!m.ok) return null;
+  return ((await m.json()) as { photoUri?: string }).photoUri ?? null;
+}
+
+/** A photo URI for a place id (Google-hosted), or null. Used for the top option, which already has an id. */
+export async function photoUri(placeId: string, width = 800): Promise<string | null> {
   if (!KEY() || !/^[A-Za-z0-9_-]{10,300}$/.test(placeId)) return null;
-  return cached(cacheKey("photo", placeId), 86400, async () => {
+  return cached(cacheKey("photo", placeId, width), 86400, async () => {
     const d = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
       headers: { "X-Goog-Api-Key": KEY(), "X-Goog-FieldMask": "photos" },
       signal: AbortSignal.timeout(5000),
     });
     if (!d.ok) return null;
     const name = ((await d.json()) as { photos?: { name: string }[] }).photos?.[0]?.name;
-    if (!name) return null;
-    const m = await fetch(`https://places.googleapis.com/v1/${name}/media?maxWidthPx=800&skipHttpRedirect=true`, { headers: { "X-Goog-Api-Key": KEY() }, signal: AbortSignal.timeout(5000) });
-    if (!m.ok) return null;
-    return ((await m.json()) as { photoUri?: string }).photoUri ?? null;
+    return name ? mediaUri(name, width) : null;
   });
+}
+
+/**
+ * A photo for a place we only know by name and address (the other options):
+ * one Text Search asking for just the photo names (cached 30 days), then the
+ * photo itself. Fetched on demand when a card or thumbnail is shown.
+ */
+export async function photoByQuery(q: string, width = 800): Promise<string | null> {
+  if (!KEY()) return null;
+  const photoName = await cached(cacheKey("photoq", q.toLowerCase()), 30 * 86400, async () => {
+    const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Goog-Api-Key": KEY(), "X-Goog-FieldMask": "places.photos" },
+      body: JSON.stringify({ textQuery: q, maxResultCount: 1 }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    return ((await res.json()) as { places?: { photos?: { name: string }[] }[] }).places?.[0]?.photos?.[0]?.name ?? null;
+  });
+  if (!photoName) return null;
+  return cached(cacheKey("photoqm", photoName, width), 86400, () => mediaUri(photoName, width));
 }
 
 /** Address -> coordinates via the Geocoding API (10k free a month; cheaper than Places for alternates). */

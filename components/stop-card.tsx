@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Footprints, CarTaxiFront, MapPin, Phone, CalendarCheck, Star, ShieldCheck, Heart, ChevronRight } from "lucide-react";
-import type { Option, StopCard as Stop } from "@/lib/guide/scene";
+import { photoSrc, type Option, type StopCard as Stop } from "@/lib/guide/scene";
 
 export function Hop({ hop }: { hop: NonNullable<Stop["hop"]> }) {
   const Icon = hop.mode === "walk" ? Footprints : CarTaxiFront;
@@ -46,10 +46,11 @@ export function StopTicket({ stop, chosen, active, onSelect, onChoose }: { stop:
     <article className={`ticket rise overflow-hidden transition-[outline] ${active ? "outline-2 outline-offset-2 outline-gold" : ""}`}>
       <button type="button" onClick={onSelect} className="block w-full text-left" aria-label={`Show ${o.name} on the map`}>
         <div className="relative h-44 bg-sunk">
-          {o.placeId && !badPhoto[o.id] ? (
-            // Google-hosted photo via our redirect; nothing is stored.
+          {!badPhoto[o.id] ? (
+            // Google-hosted photo via our redirect (by place id, or looked up
+            // by name + address for the other options); nothing is stored.
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={`/api/photo?pid=${encodeURIComponent(o.placeId)}`} alt="" loading="lazy" className="h-full w-full object-cover" onError={() => setBadPhoto((b) => ({ ...b, [o.id]: true }))} />
+            <img key={o.id} src={photoSrc(o)} alt="" loading="lazy" className="h-full w-full object-cover" onError={() => setBadPhoto((b) => ({ ...b, [o.id]: true }))} />
           ) : (
             <div className="grid h-full place-items-center bg-[radial-gradient(circle_at_50%_40%,#3a2a22,#1a1210)]">
               <MapPin className="size-10 text-gold-text" aria-hidden />
@@ -130,7 +131,13 @@ export function StopTicket({ stop, chosen, active, onSelect, onChoose }: { stop:
               {others.map(({ x, j }) => (
                 <li key={x.id} className="border-b border-line last:border-0">
                   <button type="button" onClick={() => onChoose(j)} className="flex w-full items-center gap-3 py-2.5 text-left transition hover:bg-[rgba(201,160,99,0.08)]" aria-label={`Make ${x.name} the pick for ${stop.role}`}>
-                    <span className="grid size-8 shrink-0 place-items-center rounded-full border-2 border-gold font-extrabold text-gold-text">{j + 1}</span>
+                    <span className="relative size-14 shrink-0 overflow-hidden rounded-xl border-2 border-gold bg-sunk">
+                      {!badPhoto[x.id] && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={photoSrc(x, 160)} alt="" loading="lazy" className="h-full w-full object-cover" onError={() => setBadPhoto((b) => ({ ...b, [x.id]: true }))} />
+                      )}
+                      <span className="absolute bottom-0.5 left-0.5 grid size-6 place-items-center rounded-full bg-[#120d0b] text-[0.8rem] font-extrabold text-[#f3d9ad]">{j + 1}</span>
+                    </span>
                     <span className="min-w-0 flex-1">
                       <span className="block font-display text-[1.1rem] font-bold leading-tight">{x.name}</span>
                       <span className="block text-[0.92rem] leading-snug text-ink-2">

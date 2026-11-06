@@ -17,11 +17,16 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: PageProps<"/[city]">): Promise<Metadata> {
   const id = cityBySlug((await params).city);
   if (!id) return {};
-  const name = CITIES[id].name;
+  const { name, slug } = CITIES[id];
+  const title = `${NAME} ${name}`;
+  const description = `${TAGLINE}. The places locals love in ${name}, from a quick salad to a big night out, planned on the map by Savvy with live hours.`;
+  const image = { url: `/og/${slug}.jpg`, width: 1200, height: 630, alt: `${NAME} ${name}: Savvy the raccoon food guide` };
   return {
-    title: { absolute: `${NAME} ${name}: ${TAGLINE}` },
-    description: `The places locals love in ${name}, from a quick lunch to a big night out. Ask Savvy by voice or text and he plans it on the map with live hours.`,
-    alternates: { canonical: `/${CITIES[id].slug}` },
+    title: { absolute: `${title}: ${TAGLINE}` },
+    description,
+    alternates: { canonical: `/${slug}` },
+    openGraph: { title, description, url: `/${slug}`, siteName: NAME, type: "website", images: [image] },
+    twitter: { card: "summary_large_image", title, description, images: [image] },
   };
 }
 

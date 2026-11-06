@@ -229,8 +229,17 @@ export function GuideApp({ initialCity }: { initialCity?: CityId }) {
       stopsRef.current = stopsRef.current.map((s, i) => (i === 0 ? s : { ...s, hop: hopBetween(pickOf(stopsRef.current[i - 1], ch), pickOf(s, ch)) }));
       setStops(stopsRef.current);
       focusStop(stopIdx);
+      // Savvy introduces the option the user picked (a new run: it replaces whatever he was saying).
+      const o = stopsRef.current[stopIdx]?.options[j];
+      if (o) {
+        audio?.stopVoice();
+        const id = ++run.current;
+        void say(o.intro || `${o.name}. ${o.why}`, j < 3 ? "point" : "talk", id, "warm").then(() => {
+          if (id === run.current) gesture("listen", "listen");
+        });
+      }
     },
-    [focusStop],
+    [focusStop, say, gesture],
   );
 
   const send = useCallback(
@@ -534,14 +543,22 @@ export function GuideApp({ initialCity }: { initialCity?: CityId }) {
           <label htmlFor="ask" className="kicker block px-1 text-gold-text">
             What are you craving?
           </label>
-          <div className="mt-2 flex items-center gap-2">
-            <input
+          <div className="mt-2 flex items-end gap-2">
+            <textarea
               id="ask"
+              rows={2}
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter sends, Shift+Enter adds a line.
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  void send(input);
+                }
+              }}
               placeholder={busy ? "Savvy is on it..." : "Tacos, then a cocktail bar..."}
               maxLength={500}
-              className="min-w-0 flex-1 rounded-xl border-2 border-line bg-sunk px-3 py-3 text-[1.05rem] font-bold text-ink placeholder:text-ink-2 focus:border-gold"
+              className="min-h-[4.6rem] min-w-0 flex-1 resize-y rounded-xl border-2 border-line bg-sunk px-3 py-2.5 text-[1.05rem] font-bold leading-snug text-ink placeholder:text-ink-2 focus:border-gold"
             />
             <button type="submit" disabled={!input.trim()} className="btn btn-primary size-13 shrink-0 p-0 disabled:opacity-60" aria-label="Send to Savvy">
               <Send className="size-5" />

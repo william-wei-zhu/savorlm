@@ -15,6 +15,8 @@ export type Option = {
   name: string;
   /** Short reason it made the list (max ~14 words). */
   why: string;
+  /** What Savvy says when the user picks this option by hand (max ~30 words). */
+  intro: string;
   /** Independent best-of sites that named it (web consensus), and which ones. */
   mentions: number;
   praisedBy: string[];
@@ -34,6 +36,12 @@ export type Option = {
   badges: Badge[];
   sources: Source[];
 };
+
+/** Photo URL for an option: by place id when known, else looked up by name + address on demand. */
+export function photoSrc(o: Pick<Option, "placeId" | "name" | "address">, w: 160 | 800 = 800): string {
+  if (o.placeId) return `/api/photo?pid=${encodeURIComponent(o.placeId)}${w === 160 ? "&w=160" : ""}`;
+  return `/api/photo?q=${encodeURIComponent(`${o.name}, ${o.address}`.slice(0, 200))}${w === 160 ? "&w=160" : ""}`;
+}
 
 export type StopCard = {
   index: number;
