@@ -83,6 +83,12 @@ William 2026-11-06: every request returns exactly ONE stop card with 4 picks (to
   - Sending a request scrolls the results into view. City tiles stack the icon over the name below `sm` so long names never clip.
 - Mobile: single column must be `minmax(0,1fr)` or the map stretches to the panel's min-content.
 
+## Analytics (PostHog)
+- Project "SavorLM" (id 716413, US Cloud) in William's PostHog org; sign in with Google as wzhu1997@gmail.com. Dashboard: https://us.posthog.com/project/716413
+- `instrumentation-client.ts` inits posthog-js (`defaults: "2025-05-24"`: autocapture + pageviews/pageleaves on App Router navigation) through the `/ingest` reverse proxy in `next.config.ts` (plus `skipTrailingSlashRedirect`), same pattern as williamzhu.ai. Anonymous only (`person_profiles: "identified_only"`, nobody is identified), no session replay, `respect_dnt`, IPs anonymized in project settings.
+- Named events via `track()` in `lib/analytics.ts` (typed): `city_picked {city, from}`, `search_sent {city, via: typed|idea|voice}`, `list_shown {city, picks, top_mentions}`, `pick_tapped {city, pick}`, `list_shared {city, method}`, `talk_started {city}`, `voice_toggled {on}`. Never send the request text, transcripts or anything personal. The privacy page discloses this.
+- Env: `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST` (Vercel production + development, `.env.local`). Without the key, nothing loads.
+
 ## Guards
 `lib/server/guard.ts`: per-IP burst, per-IP daily, global daily budget per kind (guide 1500, hear 2000, tts 8000, photo 4000), trusted client IP, strict origin. Fails closed in production without Firestore. Photos via `/api/photo` (302 to a Google-hosted URI).
 

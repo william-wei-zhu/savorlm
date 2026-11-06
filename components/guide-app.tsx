@@ -16,6 +16,7 @@ import { Mic as MicRecorder, blobToBase64 } from "@/lib/audio/recorder";
 import { sseParser, type Pose, type SceneEvent, type SharedList, type StopCard } from "@/lib/guide/scene";
 import { CITIES, CITY_IDS, REGIONS, US_VIEW, cityForTz, cityIcon, type CityId } from "@/lib/cities";
 import { CityChooser } from "./city-chooser";
+import { track } from "@/lib/analytics";
 import { NAME, TAGLINE } from "@/lib/brand";
 import { cityShot } from "@/lib/guide/geo";
 
@@ -169,7 +170,8 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   }, []);
 
   /** Picking a city moves to its own URL without reloading (shareable links). */
-  const pickCity = useCallback((c: CityId) => {
+  const pickCity = useCallback((c: CityId, from: "chooser" | "picker" | "map" = "picker") => {
+    if (c !== cityRef.current || landingRef.current) track("city_picked", { city: c, from });
     // Another city starts fresh: the old city's picks and Savvy's last line go,
     // and he greets the new city.
     if (!landingRef.current && c !== cityRef.current) {
@@ -309,6 +311,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
       showOption(stopIdx, j);
       const o = stopsRef.current[stopIdx]?.options[j];
       if (!o) return;
+      track("pick_tapped", { city: cityRef.current, pick: j + 1 });
       userTook.current++;
       audio?.stopVoice();
       const id = run.current;
@@ -320,9 +323,10 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   );
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, via: "typed" | "idea" | "voice" = "typed") => {
       const message = text.trim();
       if (!message) return;
+      track("search_sent", { city, via });
       await unlock();
       audio?.stopVoice();
       abort.current?.abort();
@@ -432,6 +436,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           gesture("look", "look");
           await map.current?.fly(e.shot);
           audio?.chime();
+          track("list_shown", { city: cityRef.current, picks: e.stop.options.length, top_mentions: e.stop.options[0].mentions });
           picked.push(e.stop.options[0].name);
           // One option at a time: Savvy introduces the top three in turn, the
           // card and map following him; a tap on any option takes over.
@@ -489,6 +494,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
       return;
     }
     setStatus("listening");
+    track("talk_started", { city: cityRef.current });
     gesture("listen", "listen");
     setCaption("I'm all ears...");
     audio?.blip();
@@ -513,7 +519,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
       const j = (await r.json()) as { text?: string; error?: string };
       if (!j.text) throw new Error(j.error ?? "empty");
       setStatus("idle");
-      void send(j.text);
+      void send(j.text, "voice");
     } catch {
       setStatus("idle");
       setPose("listen");
@@ -527,6 +533,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
     const url = `${window.location.origin}/t/${shareId}`;
     try {
       if (navigator.share) {
+        track("list_shared", { city, method: "share_sheet" });
         await navigator.share({ title: `${title} | ${NAME}`, text: `${title}: Savvy's picks in ${CITIES[city].name}`, url });
         return;
       }
@@ -535,6 +542,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
     }
     try {
       await navigator.clipboard.writeText(url);
+      track("list_shared", { city, method: "copy" });
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch {
@@ -551,6 +559,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
 
   const toggleVoice = () => {
     const v = !voice;
+    track("voice_toggled", { on: v });
     setVoice(v);
     voiceRef.current = v;
     if (!v) audio?.stopVoice();
@@ -605,7 +614,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
       {/* The map with Savvy standing on it (desktop). On phones the map sits
           between the header and the panel, and is hidden while choosing a city. */}
       <section className={`relative order-1 ${stops.length || busy ? "h-[48dvh]" : "h-[36dvh]"} transition-[height] duration-500 lg:sticky lg:top-0 lg:order-2 lg:block lg:h-dvh lg:self-start ${landing ? "hidden" : ""}`} aria-label="Map">
-        <MapView ref={map} className="absolute inset-0" initial={landing ? US_VIEW : center(city)} onPick={(i) => (landingRef.current ? pickCity(CITY_IDS[i]) : focusStop(i))} />
+        <MapView ref={map} className="absolute inset-0" initial={landing ? US_VIEW : center(city)} onPick={(i) => (landingRef.current ? pickCity(CITY_IDS[i], "map") : focusStop(i))} />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 hidden items-end gap-3 p-6 lg:flex">
           <div className="savvy-stage pointer-events-auto w-56 shrink-0 xl:w-64 2xl:w-72">
             <Savvy pose={pose} speaking={speaking} className="h-auto w-full" onPoke={poke} />
@@ -628,7 +637,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
                 >
                   <Keyboard className="size-4" aria-hidden /> Type it
                 </button>
-                <button type="button" onClick={() => void send(prompts[0])} className="btn border-2 border-ink py-1.5 text-left hover:bg-sunk">
+                <button type="button" onClick={() => void send(prompts[0], "idea")} className="btn border-2 border-ink py-1.5 text-left hover:bg-sunk">
                   <Sparkles className="size-4 shrink-0" aria-hidden /> {prompts[0]}
                 </button>
               </div>
@@ -693,7 +702,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           <div className="flex-1 px-6 pb-8 pt-5">
             <h2 className="text-[2rem] leading-tight">Where are we eating?</h2>
             <p className="mb-5 mt-2 text-ink-2">Pick a city. Then tell Savvy what you&apos;re craving, from a quick salad to a big night out, and he&apos;ll find the places locals love.</p>
-            <CityChooser near={city} onPick={pickCity} />
+            <CityChooser near={city} onPick={(c) => pickCity(c, "chooser")} />
           </div>
         ) : (
           <>
@@ -782,7 +791,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
               <ul className="mt-1 border-t border-line">
                 {prompts.map((p) => (
                   <li key={p}>
-                    <button type="button" onClick={() => send(p)} className="menu-item">
+                    <button type="button" onClick={() => void send(p, "idea")} className="menu-item">
                       <span className="font-display text-[1.15rem] font-semibold leading-snug">{p}</span>
                       <span className="chev" aria-hidden>
                         <ChevronRight className="size-5" />
