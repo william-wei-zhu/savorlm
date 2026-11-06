@@ -567,7 +567,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
 
       {/* The map with Savvy standing on it (desktop). On phones the map sits
           between the header and the panel, and is hidden while choosing a city. */}
-      <section className={`relative order-1 h-[34dvh] lg:sticky lg:top-0 lg:order-2 lg:block lg:h-dvh lg:self-start ${landing ? "hidden" : ""}`} aria-label="Map">
+      <section className={`relative order-1 ${stops.length || busy ? "h-[34dvh]" : "h-[22dvh]"} transition-[height] duration-500 lg:sticky lg:top-0 lg:order-2 lg:block lg:h-dvh lg:self-start ${landing ? "hidden" : ""}`} aria-label="Map">
         <MapView ref={map} className="absolute inset-0" initial={landing ? US_VIEW : center(city)} onPick={(i) => (landingRef.current ? pickCity(CITY_IDS[i]) : focusStop(i))} />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 hidden items-end gap-3 p-6 lg:flex">
           <div className="savvy-stage pointer-events-auto w-56 shrink-0 xl:w-64 2xl:w-72">
@@ -615,26 +615,26 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
       {/* The left column: a printed evening menu. On phones it dissolves
           (display: contents) so the header sits above the map and the panel below. */}
       <div className="menu contents lg:order-1 lg:flex lg:min-h-dvh lg:flex-col">
-        <header className="menu-part order-0 flex flex-wrap items-center gap-x-3 gap-y-2 px-6 pb-3 pt-5 lg:flex-nowrap lg:pt-6">
+        <header className="menu-part order-0 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 px-5 pb-3 pt-4 lg:flex-nowrap lg:gap-x-3 lg:px-6 lg:pt-6">
           <div className="rounded-full border-2 border-gold p-1">
-            <Image src="/savvy/avatar.webp" alt="" width={64} height={64} className="size-10 rounded-full bg-[#2a211d] lg:size-14" />
+            <Image src="/savvy/avatar.webp" alt="" width={64} height={64} className="size-9 rounded-full bg-[#2a211d] sm:size-10 lg:size-14" />
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="text-[1.75rem] font-extrabold leading-none tracking-tight lg:text-[2rem]">{NAME}</h1>
+            <h1 className="truncate text-[1.4rem] font-extrabold max-[380px]:text-[1.2rem] leading-tight tracking-tight lg:text-[2rem] lg:leading-none">{NAME}</h1>
             <p className="mt-1.5 hidden text-[0.95rem] leading-snug text-gold-text [text-wrap:balance] lg:block">{TAGLINE}</p>
           </div>
-          <button type="button" onClick={toggleVoice} className="btn size-11 border-2 border-gold p-0 text-ink hover:bg-sunk" aria-label={voice ? "Mute Savvy" : "Unmute Savvy"} title={voice ? "Mute Savvy" : "Unmute Savvy"}>
+          <button type="button" onClick={toggleVoice} className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk lg:size-11" aria-label={voice ? "Mute Savvy" : "Unmute Savvy"} title={voice ? "Mute Savvy" : "Unmute Savvy"}>
             {voice ? <Volume2 className="size-5" /> : <VolumeX className="size-5" />}
           </button>
-          <Link href="/settings" className="btn size-11 border-2 border-gold p-0 text-ink hover:bg-sunk" aria-label="Settings" title="Settings">
+          <Link href="/settings" className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk lg:size-11" aria-label="Settings" title="Settings">
             <Settings className="size-5" />
           </Link>
-          <p className="basis-full text-[0.95rem] leading-snug text-gold-text lg:hidden">{TAGLINE}</p>
+          <p className="basis-full text-[0.92rem] leading-snug text-gold-text lg:hidden">{TAGLINE}</p>
         </header>
 
         {/* The panel: the ask, the picks, the footer. */}
         <section className="menu-part order-2 flex flex-1 flex-col pb-32 lg:pb-0">
-        <div className="px-6">
+        <div className="hidden px-6 lg:block">
           <div className="ornament text-[0.8rem]" aria-hidden>
             ✦
           </div>
@@ -648,7 +648,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           </div>
         ) : (
           <>
-        <div className="flex items-end gap-3 px-6 pb-2 pt-4">
+        <div className="flex items-end gap-3 px-6 pb-2 pt-3 lg:pt-4">
           <div className="min-w-0 flex-1">
             <label htmlFor="city" className="kicker text-gold-text">
               Tonight in
