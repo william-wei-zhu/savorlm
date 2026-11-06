@@ -48,8 +48,8 @@ export function StopTicket({ stop, chosen, active, onSelect, onChoose }: { stop:
         <div className="relative h-44 bg-sunk">
           <Photo src={photoSrc(o)} className="absolute inset-0 h-full w-full" />
           <div className="absolute inset-0 bg-gradient-to-t from-[#120d0b] via-[#120d0b]/45 to-transparent" />
-          <span className="kicker absolute left-3 top-3 rounded-full border border-[#c9a063] bg-[#120d0b] px-3 py-1 text-[#f3d9ad]">{stop.role}</span>
-          <span className="kicker absolute right-3 top-3 rounded-full bg-[#f0c98e] px-3 py-1 text-[#1a1210]">{chosen === 0 ? "Top pick" : `Pick ${chosen + 1} of ${stop.options.length}`}</span>
+          <span className="kicker absolute left-3 top-3 max-w-[52%] truncate rounded-full border border-[#c9a063] bg-[#120d0b] px-3 py-1 text-[#f3d9ad]">{stop.role}</span>
+          <span className="kicker absolute right-3 top-3 max-w-[40%] truncate rounded-full bg-[#f0c98e] px-3 py-1 text-[#1a1210]">{chosen === 0 ? "Top pick" : `Pick ${chosen + 1} of ${stop.options.length}`}</span>
           <div className="absolute inset-x-4 bottom-3">
             <h3 className="text-[1.6rem] text-[#faf6f1] drop-shadow">{o.name}</h3>
             {o.mentions >= 2 ? (
@@ -128,7 +128,7 @@ export function StopTicket({ stop, chosen, active, onSelect, onChoose }: { stop:
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block font-display text-[1.1rem] font-bold leading-tight">{x.name}</span>
-                      <span className="block text-[0.92rem] leading-snug text-ink-2">
+                      <span className="line-clamp-2 text-[0.92rem] leading-snug text-ink-2">
                         {[x.mentions >= 2 ? `Named by ${x.mentions} guides` : "", x.openNow === "open" ? "Open now" : x.openNow === "closed" ? "Closed now" : "", x.rating, x.why].filter(Boolean).join(" · ")}
                       </span>
                     </span>

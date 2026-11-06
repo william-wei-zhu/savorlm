@@ -68,10 +68,14 @@ Scene events (`lib/guide/scene.ts`): `city` (the plan's city), `say`, `fly`, `st
 
 ## Design
 - An evening menu: the side panel (`.menu`) is always espresso + gold in both themes (deliberate). Fraunces / Figtree 600 / DM Mono. Component classes live in `@layer components` so utilities can override them.
-- Ask box (2-row textarea + send + "Or just talk to Savvy") at the top of the panel under the city picker and "All cities". Tickets: the option on show with photo, "Top pick" / "Pick N of 4", "Local favorite · named by N guides", why, facts, Jev badges, Reserve / Directions / Call, sources (supporting pages first, then the lists that named it), then the fixed "Top picks · tap one to hear about it" list of all four with photo thumbnails and a "Showing" highlight. List title + "Share this list" above the tickets.
+- Ask box (2-row textarea + send + "Or just talk to Savvy") at the top of the panel under the city picker and the "All cities" pill button. Tickets: the option on show with photo, "Top pick" / "Pick N of 4", "Local favorite · named by N guides", why, facts, Jev badges, Reserve / Directions / Call, sources (supporting pages first, then the lists that named it), then the fixed "Top picks · tap one to hear about it" list of all four with photo thumbnails and a "Showing" highlight. List title + "Share this list" above the tickets.
 - Tagline: "Your foodie guide to the city's best dining spots".
 - The whole page scrolls (William, 2026-11-06: do not freeze the top of the panel); on desktop the map column is `sticky top-0 h-dvh self-start` so it stays in view.
-- Below `lg`, Savvy + bubble are `fixed` to the viewport bottom (William: "the raccoon is hiding down below" once the whole page scrolled); on desktop they sit inside the sticky map. Size steps `w-28 sm:w-40 lg:w-56 xl:w-64 2xl:w-72`.
+- Desktop (`lg`+): Savvy + speech bubble (with onboarding buttons) stand inside the sticky map, sizes `w-56 xl:w-64 2xl:w-72`.
+- Phones (below `lg`, redesigned 2026-11-06 after William: "the raccoon overlaps with a lot of text... the UI wasn't intuitive"):
+  - Order is header (logo, name, mute, settings; tagline on its own line) > map (`34dvh`, hidden on the landing so the city chooser comes first) > panel. The left column wrapper is `.menu contents lg:flex`, so on phones its header and panel are separate grid items around the map; `.menu-part` paints their background on phones only.
+  - Savvy lives in an opaque bottom dock (`fixed`, safe-area padded, about 122px): animated rig, caption clamped to 3 lines (tap to expand), one round action (mic, or Stop while he talks). No onboarding buttons in the dock; the panel already has the ask box, Talk and ideas. The panel pads `pb-32` so the dock never covers text. Never go back to a floating overlay on phones.
+  - Sending a request scrolls the results into view. City tiles stack the icon over the name below `sm` so long names never clip.
 - Mobile: single column must be `minmax(0,1fr)` or the map stretches to the panel's min-content.
 
 ## Guards

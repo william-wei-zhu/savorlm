@@ -100,6 +100,8 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   const [voice, setVoice] = useState(true);
   const [micLv, setMicLv] = useState(0);
   const [intro, setIntro] = useState(true);
+  const [capOpen, setCapOpen] = useState(""); // the caption the phone dock shows in full
+  const resultsRef = useRef<HTMLDivElement>(null);
   const mic = useRef<MicRecorder | null>(null);
   const run = useRef(0);
   const abort = useRef<AbortController | null>(null);
@@ -239,7 +241,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
     if (!greet) return;
     const c = cityRef.current;
     const id = ++run.current;
-    void say(`${CITIES[c].name}! Tap one of my ideas, type what you're craving, or tap Talk and just tell me.`, "wave", id, "excited").then(() => {
+    void say(`${CITIES[c].name}! Type what you're craving, tap the mic and tell me, or pick one of my ideas.`, "wave", id, "excited").then(() => {
       if (id === run.current) gesture("listen", "listen");
     });
     // Only when a city is picked; say and gesture are stable callbacks.
@@ -318,6 +320,8 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
       setCaption("Ooh, let me sniff around...");
       const history = turns.slice(-6);
       setTurns((t) => [...t, { role: "user", text: message }]);
+      // Phones: bring the results into view so the scouting card shows right away.
+      if (window.matchMedia("(max-width: 63.99rem)").matches) setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
 
       // The director: events are queued as they stream and played in order.
       const queue: SceneEvent[] = [];
@@ -555,20 +559,23 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   const prompts = PROMPTS[city] ?? PROMPTS.default!;
   const lastUser = [...turns].reverse().find((t) => t.role === "user");
 
+  const poke = () => !speaking && gesture("laugh", "listen", 1300);
+
   return (
     <div className="grid min-h-dvh grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(25rem,32rem)_minmax(0,1fr)]">
       {intro && <Intro />}
 
-      {/* The map with Savvy standing on it. */}
-      <section className="relative order-1 h-[52dvh] lg:sticky lg:top-0 lg:order-2 lg:h-dvh lg:self-start" aria-label="Map">
+      {/* The map with Savvy standing on it (desktop). On phones the map sits
+          between the header and the panel, and is hidden while choosing a city. */}
+      <section className={`relative order-1 h-[34dvh] lg:sticky lg:top-0 lg:order-2 lg:block lg:h-dvh lg:self-start ${landing ? "hidden" : ""}`} aria-label="Map">
         <MapView ref={map} className="absolute inset-0" initial={landing ? US_VIEW : center(city)} onPick={(i) => (landingRef.current ? pickCity(CITY_IDS[i]) : focusStop(i))} />
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex items-end gap-1 p-2 pb-3 sm:gap-3 sm:p-4 lg:absolute lg:p-6">
-          <div className="savvy-stage pointer-events-auto w-28 shrink-0 sm:w-40 lg:w-56 xl:w-64 2xl:w-72">
-            <Savvy pose={pose} speaking={speaking} className="h-auto w-full" onPoke={() => !speaking && gesture("laugh", "listen", 1300)} />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 hidden items-end gap-3 p-6 lg:flex">
+          <div className="savvy-stage pointer-events-auto w-56 shrink-0 xl:w-64 2xl:w-72">
+            <Savvy pose={pose} speaking={speaking} className="h-auto w-full" onPoke={poke} />
           </div>
-          <div className="bubble pointer-events-auto mb-6 max-w-[34rem] px-4 pb-3 pt-4 sm:mb-10 sm:px-5 sm:pb-4 sm:pt-5 lg:mb-16" aria-live="polite">
+          <div className="bubble pointer-events-auto mb-16 max-w-[34rem] px-5 pb-4 pt-5" aria-live="polite">
             <span className="kicker name-tag">Savvy</span>
-            <p className="text-[1.02rem] leading-snug sm:text-[1.2rem]">{caption}</p>
+            <p className="text-[1.2rem] leading-snug">{caption}</p>
             {onboarding && (
               <div className="rise mt-2.5 flex flex-wrap gap-2">
                 <button type="button" onClick={() => void listen()} className="btn btn-primary py-1.5">
@@ -605,15 +612,16 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
         </div>
       </section>
 
-      {/* The panel: a printed evening menu. */}
-      <section className="menu order-2 flex min-h-dvh flex-col pb-40 sm:pb-52 lg:order-1 lg:pb-0">
-        <header className="flex items-center gap-3 px-6 pb-3 pt-6">
+      {/* The left column: a printed evening menu. On phones it dissolves
+          (display: contents) so the header sits above the map and the panel below. */}
+      <div className="menu contents lg:order-1 lg:flex lg:min-h-dvh lg:flex-col">
+        <header className="menu-part order-0 flex flex-wrap items-center gap-x-3 gap-y-2 px-6 pb-3 pt-5 lg:flex-nowrap lg:pt-6">
           <div className="rounded-full border-2 border-gold p-1">
-            <Image src="/savvy/avatar.webp" alt="" width={64} height={64} className="size-14 rounded-full bg-[#2a211d]" />
+            <Image src="/savvy/avatar.webp" alt="" width={64} height={64} className="size-10 rounded-full bg-[#2a211d] lg:size-14" />
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="text-[2rem] font-extrabold leading-none tracking-tight">{NAME}</h1>
-            <p className="mt-1.5 text-[0.95rem] leading-snug text-gold-text [text-wrap:balance]">{TAGLINE}</p>
+            <h1 className="text-[1.75rem] font-extrabold leading-none tracking-tight lg:text-[2rem]">{NAME}</h1>
+            <p className="mt-1.5 hidden text-[0.95rem] leading-snug text-gold-text [text-wrap:balance] lg:block">{TAGLINE}</p>
           </div>
           <button type="button" onClick={toggleVoice} className="btn size-11 border-2 border-gold p-0 text-ink hover:bg-sunk" aria-label={voice ? "Mute Savvy" : "Unmute Savvy"} title={voice ? "Mute Savvy" : "Unmute Savvy"}>
             {voice ? <Volume2 className="size-5" /> : <VolumeX className="size-5" />}
@@ -621,8 +629,11 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           <Link href="/settings" className="btn size-11 border-2 border-gold p-0 text-ink hover:bg-sunk" aria-label="Settings" title="Settings">
             <Settings className="size-5" />
           </Link>
+          <p className="basis-full text-[0.95rem] leading-snug text-gold-text lg:hidden">{TAGLINE}</p>
         </header>
 
+        {/* The panel: the ask, the picks, the footer. */}
+        <section className="menu-part order-2 flex flex-1 flex-col pb-32 lg:pb-0">
         <div className="px-6">
           <div className="ornament text-[0.8rem]" aria-hidden>
             ✦
@@ -646,7 +657,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
                 reset();
                 window.history.pushState(null, "", "/");
                 window.dispatchEvent(new PopStateEvent("popstate"));
-              }} className="ml-3 inline-flex items-center gap-1 text-[0.9rem] font-bold text-gold-text underline underline-offset-2">
+              }} className="btn ml-3 border-2 border-gold py-0.5 pl-2 pr-3 text-[0.9rem] text-ink hover:bg-sunk">
               <ChevronLeft className="size-4" aria-hidden /> All cities
             </button>
             <div className="relative mt-1">
@@ -681,7 +692,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           }}
         >
           <label htmlFor="ask" className="kicker block px-1 text-gold-text">
-            {onboarding ? "What are you craving? Type it or tap Talk" : "What are you craving?"}
+            {onboarding ? "What are you craving? Type it or tap the mic" : "What are you craving?"}
           </label>
           <div className="mt-2 flex items-end gap-2">
             <textarea
@@ -717,7 +728,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           </button>
         </form>
 
-        <div className="flex-1 space-y-4 px-6 pb-5 pt-4">
+        <div ref={resultsRef} className="flex-1 scroll-mt-3 space-y-4 px-6 pb-5 pt-4">
           {lastUser && (
             <div className="flex justify-end">
               <p className="user-bubble max-w-[88%] px-4 py-2.5">{lastUser.text}</p>
@@ -785,7 +796,40 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
             Privacy
           </Link>
         </footer>
-      </section>
+        </section>
+
+        {/* Phones: Savvy docks at the bottom like a "now playing" bar. It is
+            opaque and the panel pads for it, so he never covers the text. */}
+        <div className="menu fixed inset-x-0 bottom-0 z-30 border-t-2 border-gold lg:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+          <div className="mx-auto flex max-w-2xl items-center gap-3 px-3 py-2">
+            <div className="savvy-stage -mt-7 w-[4.75rem] shrink-0">
+              <Savvy pose={pose} speaking={speaking} className="h-auto w-full" onPoke={poke} />
+            </div>
+            <button type="button" onClick={() => setCapOpen((o) => (o === caption ? "" : caption))} className="min-w-0 flex-1 text-left" aria-expanded={capOpen === caption} aria-live="polite">
+              <span className="flex items-center gap-2">
+                <span className="kicker text-gold-text">Savvy</span>
+                {(status === "thinking" || status === "hearing") && (
+                  <span className="flex gap-1" aria-label="Savvy is thinking">
+                    {[0, 1, 2].map((i) => (
+                      <span key={i} className="dot size-2 rounded-full bg-accent" style={{ animationDelay: `${i * 0.15}s` }} />
+                    ))}
+                  </span>
+                )}
+              </span>
+              <span className={`text-[1rem] leading-snug ${capOpen === caption ? "block" : "line-clamp-3"}`}>{caption}</span>
+            </button>
+            {speaking ? (
+              <button type="button" onClick={stopTalking} className="btn size-12 shrink-0 border-2 border-gold p-0 text-ink" aria-label="Stop talking">
+                <Square className="size-4 fill-current" aria-hidden />
+              </button>
+            ) : (
+              <button type="button" onClick={() => void listen()} disabled={status === "hearing"} className={`btn btn-primary size-12 shrink-0 p-0 ${status === "listening" ? "mic-live" : ""}`} style={{ ["--lv" as string]: micLv }} aria-label={status === "listening" ? "Send what you said" : "Talk to Savvy"}>
+                {status === "listening" ? <Send className="size-5" aria-hidden /> : <Mic className="size-5" aria-hidden />}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
