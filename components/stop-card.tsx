@@ -38,11 +38,9 @@ export function StopTicket({ stop, chosen, active, onSelect, onChoose }: { stop:
   return (
     <article className={`ticket rise overflow-hidden transition-[outline] ${active ? "outline-2 outline-offset-2 outline-gold" : ""}`}>
       <button type="button" onClick={onSelect} className="block w-full text-left" aria-label={`Show ${o.name} on the map`}>
-        <div className="relative h-44 bg-sunk">
+        <div className="relative h-60 bg-sunk">
           <Photo src={photoSrc(o)} className="absolute inset-0 h-full w-full" />
           <div className="absolute inset-0 bg-gradient-to-t from-[#120d0b] via-[#120d0b]/45 to-transparent" />
-          <span className="kicker absolute left-3 top-3 max-w-[calc(100%-8.5rem)] rounded-full border border-[#c9a063] bg-[#120d0b] px-3 py-1 leading-snug text-[#f3d9ad]">{stop.role}</span>
-          <span className="kicker absolute right-3 top-3 whitespace-nowrap rounded-full bg-[#f0c98e] px-3 py-1 text-[#1a1210]">{chosen === 0 ? "Top pick" : `Pick ${chosen + 1}`}</span>
           <div className="absolute inset-x-4 bottom-3">
             <h3 className="text-[1.6rem] text-[#faf6f1] drop-shadow">{o.name}</h3>
             {o.mentions >= 2 ? (
@@ -85,7 +83,7 @@ export function StopTicket({ stop, chosen, active, onSelect, onChoose }: { stop:
           <CalendarCheck className="size-4" aria-hidden /> Reserve
         </a>
         <a className="btn border-2 border-gold text-ink hover:bg-sunk" href={o.mapsUrl} target="_blank" rel="noopener noreferrer">
-          <MapPin className="size-4" aria-hidden /> Directions
+          <MapPin className="size-4" aria-hidden /> Google Maps
         </a>
         {o.phone && (
           <a className="btn border-2 border-gold text-ink hover:bg-sunk" href={`tel:${o.phone.replace(/[^\d+]/g, "")}`}>
