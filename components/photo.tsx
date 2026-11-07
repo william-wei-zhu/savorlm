@@ -3,7 +3,9 @@
 // A restaurant photo from /api/photo with honest states: a gold shimmer while
 // it loads, one retry on failure (a daily cap or a slow Google call is not
 // cached, so the second try can succeed), and a clean placeholder if it still
-// fails or takes longer than 9 s. Never a blank or half-stuck image.
+// fails or takes longer than 9 s. Never a blank or half-stuck image. Loads
+// eagerly: with loading="lazy" the 9 s timer ran out before an off-screen
+// card was scrolled to, and it showed the placeholder (William 2026-11-06).
 import { useEffect, useState } from "react";
 import { MapPin } from "lucide-react";
 
@@ -36,7 +38,6 @@ export function Photo({ src, className = "", iconClass = "size-10" }: { src: str
           key={url}
           src={url}
           alt=""
-          loading="lazy"
           className={`h-full w-full object-cover transition-opacity duration-300 ${state === "ok" ? "opacity-100" : "opacity-0"}`}
           onLoad={() => setState("ok")}
           onError={() => {
