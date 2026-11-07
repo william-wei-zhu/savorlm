@@ -11,8 +11,6 @@ type Events = {
   talk_started: { city: string };
   voice_toggled: { on: boolean };
   list_reopened: { city: string };
-  history_opened: { chats: number };
-  chat_restored: { city: string; lists: number };
 };
 
 export function track<E extends keyof Events>(event: E, props: Events[E]) {

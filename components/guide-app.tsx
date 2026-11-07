@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Check, ChevronDown, ChevronLeft, ChevronRight, History, List as ListIcon, Map as MapIcon, Keyboard, Mic, Send, Share2, Sparkles, Square, Trash2, Volume2, VolumeX, RotateCcw, Settings, X } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, List as ListIcon, Map as MapIcon, Keyboard, Mic, Send, Share2, Sparkles, Square, Volume2, VolumeX, RotateCcw, Settings } from "lucide-react";
 import { MapView, type MapHandle, type Pin } from "./map-view";
 import { Savvy } from "./savvy";
 import { StopTicket, factsOf } from "./stop-card";
@@ -15,7 +15,7 @@ import { Photo } from "./photo";
 import { audio } from "@/lib/audio/engine";
 import { Mic as MicRecorder, blobToBase64 } from "@/lib/audio/recorder";
 import { photoSrc, sseParser, type Pose, type SceneEvent, type SharedList, type StopCard } from "@/lib/guide/scene";
-import { ago, chatTitle, clearChats, loadChats, newChatId, saveChat, type Answer, type Chat, type Exchange } from "@/lib/guide/history";
+import { forgetSavedChats, newExchangeId, type Answer, type Exchange } from "@/lib/guide/thread";
 import { listSummary } from "@/lib/guide/speech";
 import { CITIES, CITY_IDS, REGIONS, US_VIEW, cityForTz, cityIcon, type CityId } from "@/lib/cities";
 import { CityChooser } from "./city-chooser";
@@ -99,15 +99,12 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   const threadRef = useRef<Exchange[]>(thread);
   const [openIdx, setOpenIdx] = useState(0);
   const openRef = useRef(0);
-  const chatId = useRef(""); // made on first save (no randomness during prerender)
   const [next, setNext] = useState<string[]>([]);
   const nextRef = useRef<string[]>([]);
   const [reply, setReply] = useState(""); // Savvy's line for an answer without a list (small talk, errors)
   const replyRef = useRef("");
   const titleRef = useRef(initialTour?.title ?? "");
   const shareIdRef = useRef<string | null>(initialTour?.id ?? null);
-  const [recent, setRecent] = useState<Chat[]>([]);
-  const [recentOpen, setRecentOpen] = useState(false);
   const openElRef = useRef<HTMLDivElement>(null);
   // Phones in a chat show one thing at a time: the list or the map (William 2026-11-06: "too busy").
   const [mobileView, setMobileView] = useState<"list" | "map">("list");
@@ -145,7 +142,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
     voiceRef.current = v;
     // A city URL (savorlm.com/miami) wins; the home page guesses from the time zone.
     if (!initialCity) setCity(guessCity());
-    setRecent(loadChats());
+    forgetSavedChats(); // Recent chats was removed (William 2026-11-06): drop what older visits saved
     const t = setTimeout(() => setIntro(false), 2900);
     // After the hello wave, Savvy settles into listening.
     const w = setTimeout(() => setPose((p) => (p === "wave" ? "listen" : p)), 5200);
@@ -247,28 +244,18 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
     setActive(null);
   }, []);
 
-  /** Save this chat to the browser's recent chats (only chats with a list are kept). */
-  const persist = useCallback(() => {
-    const t = liveThread();
-    if (!t.length) return;
-    chatId.current ||= newChatId();
-    setRecent(saveChat({ id: chatId.current, city: cityRef.current, updatedAt: Date.now(), thread: t }));
-  }, [liveThread]);
-
-  /** End this chat (it stays in Recent) and drop the answer: request, voice, picks, title, share link and pins. */
+  /** End this chat and drop the answer: request, voice, thread, picks, title, share link and pins. */
   const clearAnswer = useCallback(() => {
-    persist();
     abort.current?.abort();
     run.current++;
     audio?.stopVoice();
     putThread([], 0);
-    chatId.current = "";
     loadLive(null);
     setStreaming(false);
     setStatus("idle");
     setSpeaking(false);
     map.current?.setStops([], null);
-  }, [persist, putThread, loadLive]);
+  }, [putThread, loadLive]);
 
   /** Picking a city moves to its own URL without reloading (shareable links). */
   const pickCity = useCallback((c: CityId, from: "chooser" | "picker" | "map" = "picker") => {
@@ -449,7 +436,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
         })
         .slice(-6);
       const seen = [...new Set(prior.flatMap((e) => e.a?.stops.flatMap((s) => s.options.map((o) => o.name.slice(0, 120))) ?? []))].slice(-24);
-      const t = [...prior, { id: newChatId(), q: message, a: null }];
+      const t = [...prior, { id: newExchangeId(), q: message, a: null }];
       putThread(t, t.length - 1);
       loadLive(null);
       map.current?.setStops([], null);
@@ -575,10 +562,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           if (id !== run.current) break; // a new request or city took over
           if (e.text) await say(e.text, "dance", id, "cozy");
           if (id === run.current && picked.length) gesture("cheer", "listen", 1900);
-          if (id === run.current) {
-            if (!picked.length) setReply(lastLine);
-            persist();
-          }
+          if (id === run.current && !picked.length) setReply(lastLine);
         } else if (e.t === "error") {
           await settle();
           if (id !== run.current) break;
@@ -592,7 +576,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
         setPose((p) => (p === "talk" || p === "think" || p === "look" ? "listen" : p));
       }
     },
-    [city, say, unlock, gesture, drawPins, showOption, liveThread, putThread, loadLive, persist],
+    [city, say, unlock, gesture, drawPins, showOption, liveThread, putThread, loadLive],
   );
 
   const listen = useCallback(async () => {
@@ -714,37 +698,6 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
     setTimeout(() => openElRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
   };
 
-  /** Open a saved chat from Recent, straight from this browser's storage (no new search). */
-  const restoreChat = (c: Chat) => {
-    setRecentOpen(false);
-    const lists = c.thread.filter((e) => e.a?.stops.length);
-    track("chat_restored", { city: c.city, lists: lists.length });
-    clearAnswer();
-    if (!CITIES[c.city] || !lists.length) return;
-    chatId.current = c.id;
-    let i = c.thread.length - 1;
-    while (i > 0 && !c.thread[i].a?.stops.length) i--;
-    putThread(c.thread, i);
-    loadLive(c.thread[i].a);
-    if (landingRef.current) {
-      landingRef.current = false;
-      setLanding(false);
-      unlocked.current = true;
-      void audio?.unlock().catch(() => {});
-    }
-    cityRef.current = c.city;
-    setCity(c.city);
-    try {
-      window.history.pushState(null, "", `/${CITIES[c.city].slug}`);
-      document.title = `${NAME} ${CITIES[c.city].name}: ${TAGLINE}`;
-    } catch {}
-    gesture("wave", "listen", 1600);
-    setCaption(`Welcome back! Here's ${c.thread[i].a?.title || "your list"}. Tap any pick, or ask me a follow-up.`);
-    // After the city move settles, pin the list and fly to its top pick.
-    setTimeout(() => focusStop(0), 450);
-    setTimeout(() => openElRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
-  };
-
   /** Phones: switch between the list and the map (the map re-centers on the pick on show). */
   const showView = (v: "list" | "map") => {
     setMobileView(v);
@@ -758,23 +711,11 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   };
   const isPhone = () => window.matchMedia("(max-width: 63.99rem)").matches;
 
-  const recentBtn = (
-    <button type="button" onClick={() => openRecent()} className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk" aria-label="Recent chats" title="Recent chats">
-      <History className="size-5" />
-    </button>
-  );
   const newChatBtn = (
     <button type="button" onClick={() => reset()} className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk" aria-label="New chat" title="New chat">
       <RotateCcw className="size-4" aria-hidden />
     </button>
   );
-
-  const openRecent = () => {
-    const list = loadChats();
-    setRecent(list);
-    setRecentOpen(true);
-    track("history_opened", { chats: list.length });
-  };
 
   const busy = status === "thinking" || status === "touring" || status === "hearing";
   /** A city is open and nothing has been asked yet: show Savvy's three ways to start. */
@@ -926,15 +867,14 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
             <Settings className="size-5" />
           </Link>
           {/* The city bar: compact, in the header (above the map on phones). On
-              phones in a chat, Recent and New chat move next to the List / Map
-              switch so the city name always has room. */}
+              phones in a chat, New chat moves next to the List / Map switch so
+              the city name always has room. */}
           {!landing && (
             <div className="flex basis-full items-center gap-2 pt-1">
               <button type="button" onClick={allCities} className="btn shrink-0 border-2 border-gold py-1.5 pl-2 pr-2 text-[0.9rem] text-ink hover:bg-sunk sm:pr-3" aria-label="All cities" title="All cities">
                 <ChevronLeft className="size-4" aria-hidden /> <span className="max-sm:sr-only">All cities</span>
               </button>
               {citySelect("city", "py-1.5 text-[1.15rem]")}
-              <span className={chatting ? "contents max-lg:hidden" : "contents"}>{recentBtn}</span>
               {thread.length > 0 && <span className="contents max-lg:hidden">{newChatBtn}</span>}
             </div>
           )}
@@ -952,7 +892,6 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
                 </button>
               ))}
             </div>
-            {recentBtn}
             {newChatBtn}
             </div>
           </div>
@@ -968,14 +907,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
 
         {landing ? (
           <div className="flex-1 px-6 pb-8 pt-5">
-            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-              <h2 className="text-[2rem] leading-tight">Where are we eating?</h2>
-              {recent.length > 0 && (
-                <button type="button" onClick={openRecent} className="btn shrink-0 border-2 border-gold py-1.5 text-ink hover:bg-sunk">
-                  <History className="size-4" aria-hidden /> Recent chats
-                </button>
-              )}
-            </div>
+            <h2 className="text-[2rem] leading-tight">Where are we eating?</h2>
             <p className="mb-5 mt-2 text-ink-2">Pick a city. Then tell Savvy what you&apos;re craving, from a quick salad to a big night out, and he&apos;ll find the places locals love.</p>
             <CityChooser near={city} onPick={(c) => pickCity(c, "chooser")} />
           </div>
@@ -1168,7 +1100,6 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
         </div>
       </div>
 
-      {recentOpen && <RecentChats chats={recent} onPick={restoreChat} onClose={() => setRecentOpen(false)} onClear={() => (clearChats(), setRecent([]))} />}
     </div>
   );
 }
@@ -1253,66 +1184,6 @@ function SavvyLine({ text }: { text: string }) {
     <div className="rise flex items-start gap-2.5">
       <Image src="/savvy/avatar.webp" alt="" width={36} height={36} className="size-9 shrink-0 rounded-full border-2 border-gold bg-[#2a211d]" />
       <p className="rounded-2xl rounded-tl-md border-2 border-line bg-surface px-4 py-2.5 leading-snug">{text}</p>
-    </div>
-  );
-}
-
-/** Recent chats: a bottom sheet on phones, a panel over the menu on desktop. Saved only in this browser. */
-function RecentChats({ chats, onPick, onClose, onClear }: { chats: Chat[]; onPick: (c: Chat) => void; onClose: () => void; onClear: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  return (
-    <div className="fixed inset-0 z-50 flex items-end bg-black/60 lg:items-start" onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Recent chats"
-        onClick={(e) => e.stopPropagation()}
-        className="menu rise max-h-[80dvh] w-full overflow-y-auto rounded-t-3xl border-2 border-gold px-5 pt-5 lg:ml-6 lg:mt-24 lg:max-h-[72dvh] lg:w-[29rem] lg:rounded-3xl"
-        style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
-      >
-        <div className="flex items-center gap-3">
-          <History className="size-6 text-gold-text" aria-hidden />
-          <h2 className="flex-1 text-[1.6rem]">Recent chats</h2>
-          <button type="button" onClick={onClose} className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk" aria-label="Close">
-            <X className="size-5" />
-          </button>
-        </div>
-        <p className="mt-1 text-[0.95rem] text-ink-2">Saved only on this device. Tap one to pick up where you left off.</p>
-        {chats.length ? (
-          <>
-            <ul className="mt-3 border-t border-line">
-              {chats.map((c) => {
-                const n = c.thread.filter((e) => e.a?.stops.length).length;
-                return (
-                  <li key={c.id}>
-                    <button type="button" onClick={() => onPick(c)} className="menu-item">
-                      <span className="min-w-0 flex-1">
-                        <span className="kicker block text-gold-text">
-                          {CITIES[c.city]?.name ?? "Somewhere"} · {ago(c.updatedAt)}
-                        </span>
-                        <span className="block font-display text-[1.15rem] font-semibold leading-snug">{chatTitle(c)}</span>
-                        <span className="block text-[0.9rem] text-ink-2">{n === 1 ? "1 list" : `${n} lists`}</span>
-                      </span>
-                      <span className="chev" aria-hidden>
-                        <ChevronRight className="size-5" />
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-            <button type="button" onClick={onClear} className="btn mt-4 border-2 border-gold py-1.5 text-ink hover:bg-sunk">
-              <Trash2 className="size-4" aria-hidden /> Clear history
-            </button>
-          </>
-        ) : (
-          <p className="mt-4 border-t border-line pt-4">No chats yet. Ask Savvy for something tasty and it shows up here.</p>
-        )}
-      </div>
     </div>
   );
 }

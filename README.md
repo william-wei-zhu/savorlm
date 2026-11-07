@@ -5,7 +5,7 @@
 <h1 align="center">SavorLM</h1>
 <p align="center">Your foodie guide to the city's best dining spots. <a href="https://savorlm.com">savorlm.com</a></p>
 
-Tell Savvy what you're craving ("famous brisket for lunch" or "a quick healthy salad near Pike Place"), by voice or by typing. He finds the places people love most in 21 US cities and walks you through them on the map. Every answer is one list of four picks (a top pick and three more), never an itinerary, with live hours, a calibrated fit check, and the sources behind it. Follow up ("cheaper ones?", "show me others") and he gives a fresh list that skips what you've seen; recent chats are saved in your browser.
+Tell Savvy what you're craving ("famous brisket for lunch" or "a quick healthy salad near Pike Place"), by voice or by typing. He finds the places people love most in 21 US cities and walks you through them on the map. Every answer is one list of four picks (a top pick and three more), never an itinerary, with live hours, a calibrated fit check, and the sources behind it. Follow up ("cheaper ones?", "show me others") and he gives a fresh list that skips what you've seen.
 
 ## Why it's built this way
 

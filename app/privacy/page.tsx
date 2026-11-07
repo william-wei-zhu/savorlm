@@ -15,7 +15,7 @@ export default function Privacy() {
         <p>Each finished list is saved for 180 days so it can be shared by link (savorlm.com/t/…). It holds your request text and the places Savvy picked, nothing about you. Anyone with the link can see it; lists are hidden from search engines.</p>
         <p>To stop abuse, we count requests per IP address for the day. Those counters expire after 7 days.</p>
         <p>We use PostHog for anonymous product analytics: pages viewed, which city you picked, whether you typed, tapped an idea or talked, and which picks you tapped or shared. It never receives your request text or your voice, there is no session recording, IP addresses are anonymized, and your browser&apos;s Do Not Track setting is respected. PostHog sets a cookie to count repeat visits.</p>
-        <p>Your voice and theme settings, and your recent chats with Savvy, stay in your own browser. They are never sent to us; clear your chats any time from Recent chats.</p>
+        <p>Your voice and theme settings stay in your own browser. Your conversation with Savvy is not saved: it is gone when you leave or start a new chat (shared lists stay at their link).</p>
       </Card>
     </PageShell>
   );
