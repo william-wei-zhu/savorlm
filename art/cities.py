@@ -29,6 +29,7 @@ CITIES = {
  "san-diego": "a crispy fish taco with lime and a small orange surfboard",
  "seattle": "a cup of coffee with latte art next to a pink salmon fillet",
  "portland": "a pink frosted doughnut with sprinkles and a small pine tree",
+ "orlando": "a glossy Florida orange with green leaves next to a slice of key lime pie and a small white rocket",
 }
 only = set(sys.argv[1].split(",")) if len(sys.argv) > 1 else None
 jobs = [(k, BASE.format(subject=v)) for k, v in CITIES.items() if not only or k in only]

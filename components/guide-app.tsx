@@ -4,7 +4,7 @@
 // picks live in the side panel (a printed evening menu). A small "director"
 // plays the scene script from /api/guide in order: Savvy speaks while the
 // camera moves, then the top 4 land as pins and a ticket.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, List as ListIcon, Map as MapIcon, Keyboard, Mic, Send, Share2, Sparkles, Square, Volume2, VolumeX, RotateCcw, Settings } from "lucide-react";
@@ -21,35 +21,12 @@ import { CITIES, CITY_IDS, REGIONS, US_VIEW, cityForTz, cityIcon, type CityId } 
 import { CityChooser } from "./city-chooser";
 import { track } from "@/lib/analytics";
 import { NAME, TAGLINE } from "@/lib/brand";
+import { pickIdeas, visitSeed } from "@/lib/ideas";
 import { cityShot } from "@/lib/guide/geo";
 
 type Status = "idle" | "thinking" | "touring" | "listening" | "hearing";
 type Mood = "warm" | "excited" | "curious" | "cozy";
 
-const PROMPTS: Partial<Record<CityId | "default", string[]>> = {
-  default: ["A quick healthy salad near me", "The most famous tacos in town", "A special-occasion dinner"],
-  nyc: ["The most famous pizza slice in Manhattan", "An anniversary tasting menu", "A quick healthy lunch near Union Square"],
-  sf: ["A date-night dinner in North Beach", "The best burrito in the Mission", "A quick healthy salad in SoMa"],
-  la: ["Famous tacos in East LA", "A quick healthy lunch in Santa Monica", "A big-night sushi dinner in Beverly Hills"],
-  sandiego: ["Fish tacos near the beach", "Brunch in Little Italy", "A special dinner in La Jolla"],
-  seattle: ["A quick healthy salad near Pike Place", "The best oysters in town", "Famous teriyaki for a cheap lunch"],
-  portland: ["The best food carts for lunch", "The most famous doughnuts and coffee", "A date-night dinner in the Pearl District"],
-  vegas: ["A big-night dinner on the Strip", "The best cheap eats off the Strip", "A famous buffet or brunch"],
-  phoenix: ["Fast casual lunch under $15 in Scottsdale", "The best Sonoran hot dogs", "A date night in Old Town Scottsdale"],
-  denver: ["The best green chile in town", "A special dinner in LoHi", "A quick healthy lunch in RiNo"],
-  austin: ["Famous brisket for lunch", "Breakfast tacos tomorrow morning", "A date-night dinner on South Congress"],
-  houston: ["The best Viet-Cajun crawfish", "The most famous barbecue", "A special dinner in River Oaks"],
-  dallas: ["Tex-Mex and margaritas in Deep Ellum", "The most famous steakhouse in town", "A quick healthy lunch in Uptown"],
-  chicago: ["Deep dish or tavern pizza, the most famous one", "A big-night dinner in the West Loop", "A quick lunch near the Loop"],
-  minneapolis: ["The most famous Juicy Lucy", "A date night in the North Loop", "A cozy casual dinner"],
-  nashville: ["The best hot chicken", "A special dinner in The Gulch", "Biscuits for brunch in East Nashville"],
-  atlanta: ["The best fried chicken", "A date night on the BeltLine", "A quick healthy lunch in Midtown"],
-  neworleans: ["The best po'boys", "A big-night Creole dinner in the French Quarter", "The most famous gumbo in town"],
-  miami: ["The best Cuban sandwich and cafecito", "A big-night dinner in Miami Beach", "A quick healthy lunch in Brickell"],
-  boston: ["The most famous lobster roll", "A date night in the South End", "A quick lunch near Faneuil Hall"],
-  philly: ["The cheesesteak locals actually love", "A BYOB date night in Center City", "A quick healthy lunch near Rittenhouse"],
-  dc: ["A business dinner near the White House", "The best brunch in Logan Circle", "A quick healthy lunch near Union Station"],
-};
 
 function voicePref(): boolean {
   try {
@@ -66,6 +43,8 @@ function guessCity(): CityId {
     return "nyc";
   }
 }
+
+const noSubscribe = () => () => {};
 
 /** The option currently picked for a stop (Savvy's first unless the user chose another). */
 const pickOf = (s: StopCard, choice: Record<number, number>) => s.options[choice[s.index] ?? 0] ?? s.options[0];
@@ -108,6 +87,8 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   const openElRef = useRef<HTMLDivElement>(null);
   // Phones in a chat show one thing at a time: the list or the map (William 2026-11-06: "too busy").
   const [mobileView, setMobileView] = useState<"list" | "map">("list");
+  // Savvy's idea mix: seed 0 in the prerendered HTML (and while hydrating), then this visit's seed.
+  const ideaSeed = useSyncExternalStore(noSubscribe, visitSeed, () => 0);
   const topRef = useRef<HTMLElement>(null); // the header
   const switchRef = useRef<HTMLDivElement>(null); // the List / Map switch (phones)
   const dockRef = useRef<HTMLDivElement>(null);
@@ -720,7 +701,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   const busy = status === "thinking" || status === "touring" || status === "hearing";
   /** A city is open and nothing has been asked yet: show Savvy's three ways to start. */
   const onboarding = !landing && !thread.length && (status === "idle" || status === "touring") && !stops.length;
-  const prompts = PROMPTS[city] ?? PROMPTS.default!;
+  const prompts = pickIdeas(city, ideaSeed);
   const chatting = !landing && thread.length > 0;
 
   /** The follow-up box: pinned under the chat on desktop, in Savvy's dock on phones. */

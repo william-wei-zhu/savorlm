@@ -6,7 +6,8 @@ import { displayName, mergeMentions, normName, popularity, isRoundup, wasSeen } 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { sse, sseParser, type SceneEvent } from "@/lib/guide/scene";
-import { cleanSpeech, followUps, listSummary, oneListLine } from "@/lib/guide/speech";
+import { NEXT_STEP, cleanSpeech, followUps, listSummary, oneListLine } from "@/lib/guide/speech";
+import { IDEAS, IDEA_KINDS, pickIdeas } from "@/lib/ideas";
 import { OLD_CHATS_KEY, forgetSavedChats } from "@/lib/guide/thread";
 import { newTourId, TOUR_ID } from "@/lib/server/tours";
 import { clientIp } from "@/lib/server/client-ip";
@@ -45,8 +46,8 @@ describe("Jev badges", () => {
 });
 
 describe("cities", () => {
-  it("covers the 21 US cities and nothing abroad", () => {
-    expect(CITY_IDS.length).toBe(21);
+  it("covers the 22 US cities and nothing abroad", () => {
+    expect(CITY_IDS.length).toBe(22);
     expect(CITY_IDS).not.toContain("paris");
     expect(CITY_IDS.every((c) => CITIES[c].tz.startsWith("America/"))).toBe(true);
   });
@@ -214,5 +215,31 @@ describe("removed recent chats", () => {
     forgetSavedChats({ removeItem: (k: string) => void m.delete(k) });
     expect(m.has(OLD_CHATS_KEY)).toBe(false);
     expect(() => forgetSavedChats(null)).not.toThrow();
+  });
+});
+
+describe("Savvy's ideas", () => {
+  const all = CITY_IDS.flatMap((c) => IDEA_KINDS.flatMap((k) => IDEAS[c][k]));
+  it("gives every city 12 ideas, 3 of each kind, all different", () => {
+    for (const c of CITY_IDS) for (const k of IDEA_KINDS) expect(IDEAS[c][k].length).toBe(3);
+    expect(new Set(all).size).toBe(all.length);
+    expect(all.length).toBe(CITY_IDS.length * 12);
+  });
+  it("keeps them short, award-free and one list (never a next stop)", () => {
+    for (const s of all) {
+      expect(s.length).toBeLessThanOrEqual(60);
+      expect(s).not.toMatch(/michelin|\bstars?\b/i);
+      expect(s).not.toMatch(NEXT_STEP);
+      expect(s).not.toMatch(/—/);
+    }
+  });
+  it("shows three of different kinds, stable for a visit and varied across visits", () => {
+    const kindOf = (s: string) => IDEA_KINDS.find((k) => Object.values(IDEAS).some((p) => p[k].includes(s)));
+    const a = pickIdeas("orlando", 12345);
+    expect(a.length).toBe(3);
+    expect(new Set(a.map(kindOf)).size).toBe(3);
+    expect(pickIdeas("orlando", 12345)).toEqual(a);
+    const sets = new Set(Array.from({ length: 20 }, (_, i) => pickIdeas("orlando", i + 1).join("|")));
+    expect(sets.size).toBeGreaterThan(5);
   });
 });

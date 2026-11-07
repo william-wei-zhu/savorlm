@@ -14,6 +14,7 @@ export const CITIES = {
   nashville: { name: "Nashville", slug: "nashville", state: "TN", region: "South", center: { latitude: 36.1588, longitude: -86.7816 }, tz: "America/Chicago" },
   neworleans: { name: "New Orleans", slug: "new-orleans", state: "LA", region: "South", center: { latitude: 29.9537, longitude: -90.0700 }, tz: "America/Chicago" },
   miami: { name: "Miami", slug: "miami", state: "FL", region: "South", center: { latitude: 25.7781, longitude: -80.1966 }, tz: "America/New_York" },
+  orlando: { name: "Orlando", slug: "orlando", state: "FL", region: "South", center: { latitude: 28.5383, longitude: -81.3792 }, tz: "America/New_York" },
   austin: { name: "Austin", slug: "austin", state: "TX", region: "Texas", center: { latitude: 30.2672, longitude: -97.7431 }, tz: "America/Chicago" },
   houston: { name: "Houston", slug: "houston", state: "TX", region: "Texas", center: { latitude: 29.7470, longitude: -95.3880 }, tz: "America/Chicago" },
   dallas: { name: "Dallas", slug: "dallas", state: "TX", region: "Texas", center: { latitude: 32.7900, longitude: -96.8000 }, tz: "America/Chicago" },
@@ -51,6 +52,7 @@ export const SLUG_ALIASES: Record<string, string> = {
   dc: "washington-dc", washington: "washington-dc", philly: "philadelphia", nola: "new-orleans", neworleans: "new-orleans",
   vegas: "las-vegas", lv: "las-vegas", scottsdale: "phoenix", "phoenix-scottsdale": "phoenix", atl: "atlanta",
   pdx: "portland", msp: "minneapolis", sandiego: "san-diego", sanfrancisco: "san-francisco", losangeles: "los-angeles", newyork: "new-york", lasvegas: "las-vegas",
+  orl: "orlando", "orlando-fl": "orlando", "winter-park": "orlando",
 };
 
 /** Badge art for a city (public/cities/<slug>.webp, food-themed, made with art/cities.py). */

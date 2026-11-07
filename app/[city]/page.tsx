@@ -4,9 +4,9 @@ import { GuideApp } from "@/components/guide-app";
 import { CITIES, CITY_IDS, cityBySlug } from "@/lib/cities";
 import { NAME, TAGLINE } from "@/lib/brand";
 
-// One URL per city (savorlm.com/miami). Prerendered for all 21; anything else
+// One URL per city (savorlm.com/miami). Prerendered for all 22; anything else
 // 404s (dynamicParams is unavailable with Cache Components, so notFound()).
-// All 21 are prerendered and the picker switches cities with pushState (no
+// All 22 are prerendered and the picker switches cities with pushState (no
 // router navigation), so a blocking route is fine here.
 export const instant = false;
 

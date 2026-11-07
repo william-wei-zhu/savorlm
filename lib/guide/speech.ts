@@ -3,7 +3,7 @@ export function cleanSpeech(s: string) {
   return s.replace(/[*_#`>\[\]]/g, "").replace(/\p{Extended_Pictographic}/gu, "").replace(/\s+/g, " ").trim();
 }
 
-const NEXT_STEP = /\b(first|then|afterwards?|after that|next|later|kick (?:things )?off|to start|start with|starting with|for now|begin)\b/i;
+export const NEXT_STEP = /\b(first|then|afterwards?|after that|next|later|kick (?:things )?off|to start|start with|starting with|for now|begin)\b/i;
 
 /**
  * Savvy's opening line with any sentence that hints at a next stop removed

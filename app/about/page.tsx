@@ -7,7 +7,7 @@ export default function About() {
   return (
     <PageShell title="Savvy finds the places locals love, and shows his sources">
       <Card title="What SavorLM is">
-        <p>Savvy is a raccoon food guide for 21 US cities. Tell him what you&apos;re craving, a quick salad, famous tacos, or a big anniversary dinner, by voice or by typing. He finds the places people love most and walks you through them on the map.</p>
+        <p>Savvy is a raccoon food guide for 22 US cities. Tell him what you&apos;re craving, a quick salad, famous tacos, or a big anniversary dinner, by voice or by typing. He finds the places people love most and walks you through them on the map.</p>
       </Card>
       <Card title="How he finds the top spots">
         <p>For every request Savvy reads the web live: local best-of lists, food guides and the places&apos; own pages, through Exa search. He counts how many independent sites name each place. The ones many guides agree on rise to the top, and each ticket says how many guides named it.</p>
