@@ -12,19 +12,16 @@ import { MapPin } from "lucide-react";
 type State = "loading" | "ok" | "fail";
 
 export function Photo({ src, className = "", iconClass = "size-10" }: { src: string; className?: string; iconClass?: string }) {
-  const [state, setState] = useState<State>("loading");
-  const [attempt, setAttempt] = useState(0);
-
-  useEffect(() => {
-    // A new photo (another pick) starts over.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setState("loading");
-    setAttempt(0);
-  }, [src]);
+  // State belongs to one src: another pick's photo starts over without a reset
+  // effect (an effect could overwrite a load that had already happened).
+  const [st, setSt] = useState<{ src: string; state: State; attempt: number }>({ src, state: "loading", attempt: 0 });
+  const cur = st.src === src ? st : { src, state: "loading" as State, attempt: 0 };
+  const update = (p: Partial<typeof cur>) => setSt((s) => ({ ...(s.src === src ? s : { src, state: "loading" as State, attempt: 0 }), ...p }));
+  const { state, attempt } = cur;
 
   useEffect(() => {
     if (state !== "loading") return;
-    const t = setTimeout(() => setState("fail"), 9000);
+    const t = setTimeout(() => setSt((s) => (s.src === src && s.state === "loading" ? { ...s, state: "fail" } : s)), 9000);
     return () => clearTimeout(t);
   }, [state, attempt, src]);
 
@@ -36,13 +33,17 @@ export function Photo({ src, className = "", iconClass = "size-10" }: { src: str
         // eslint-disable-next-line @next/next/no-img-element
         <img
           key={url}
+          // A cached photo can finish before React listens for onLoad: check on mount.
+          ref={(el) => {
+            if (el?.complete && el.naturalWidth && state === "loading") update({ state: "ok" });
+          }}
           src={url}
           alt=""
           className={`h-full w-full object-cover transition-opacity duration-300 ${state === "ok" ? "opacity-100" : "opacity-0"}`}
-          onLoad={() => setState("ok")}
+          onLoad={() => update({ state: "ok" })}
           onError={() => {
-            if (attempt === 0) setTimeout(() => setAttempt(1), 1200);
-            else setState("fail");
+            if (attempt === 0) setTimeout(() => update({ attempt: 1 }), 1200);
+            else update({ state: "fail" });
           }}
         />
       )}

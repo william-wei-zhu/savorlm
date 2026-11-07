@@ -1,6 +1,7 @@
 "use client";
 
-import { MapPin, Phone, CalendarCheck, Star, ShieldCheck, Heart, ChevronRight, Check } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { MapPin, Phone, CalendarCheck, Star, ShieldCheck, Heart, ChevronRight } from "lucide-react";
 import { photoSrc, type Option, type StopCard as Stop } from "@/lib/guide/scene";
 import { Photo } from "./photo";
 
@@ -28,28 +29,81 @@ function Status({ o }: { o: Option }) {
 }
 
 /**
- * One stop: Savvy's top pick in full (photo, facts, actions), then the other
- * top options as rows. Tapping a row makes it the pick and flies the map there.
+ * The four picks as an accordion (William 2026-11-06): one row is open at a
+ * time, with the tall photo and everything about that place; the others are
+ * slim rows. Tapping a row opens it in place (and Savvy talks about it); the
+ * order never changes. Tapping the open photo shows it on the map.
  */
 export function StopTicket({ stop, chosen, active, onSelect, onChoose }: { stop: Stop; chosen: number; active: boolean; onSelect: () => void; onChoose: (j: number) => void }) {
-  const o = stop.options[chosen] ?? stop.options[0];
-  // All four options as a fixed list (William: the list must never reshuffle when one is tapped).
-  const rows = stop.options.map((x, j) => ({ x, j }));
+  const rowRefs = useRef<(HTMLLIElement | null)[]>([]);
+  const first = useRef(true);
+  // Keep the newly opened row in view while the others fold (not on first render).
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    const t = setTimeout(() => rowRefs.current[chosen]?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 320);
+    return () => clearTimeout(t);
+  }, [chosen]);
   return (
-    <article className={`ticket rise overflow-hidden transition-[outline] ${active ? "outline-2 outline-offset-2 outline-gold" : ""}`}>
+    <article className={`ticket no-notch rise overflow-hidden transition-[outline] ${active ? "outline-2 outline-offset-2 outline-gold" : ""}`}>
+      <p className="kicker px-4 pb-1 pt-3 text-gold-text">Savvy&apos;s {stop.options.length} picks · tap one to open it</p>
+      <ol>
+        {stop.options.map((o, j) => {
+          const open = j === chosen;
+          return (
+            <li key={o.id} ref={(el) => void (rowRefs.current[j] = el)} className={`scroll-mt-24 ${j > 0 ? "border-t border-line" : ""}`}>
+              {/* Closed: a slim row. */}
+              <div className="grid transition-[grid-template-rows] duration-300 ease-out" style={{ gridTemplateRows: open ? "0fr" : "1fr" }}>
+                <div className="min-h-0 overflow-hidden">
+                  <button type="button" onClick={() => onChoose(j)} tabIndex={open ? -1 : 0} aria-expanded={false} className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[rgba(201,160,99,0.08)]" aria-label={`Open ${o.name}`}>
+                    <span className="relative size-12 shrink-0 overflow-hidden rounded-xl border-2 border-gold bg-sunk">
+                      <Photo src={photoSrc(o)} className="absolute inset-0 h-full w-full" iconClass="size-5" />
+                      <span className="absolute bottom-0.5 left-0.5 grid size-6 place-items-center rounded-full bg-[#120d0b] text-[0.8rem] font-extrabold text-[#f3d9ad]">{j + 1}</span>
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-display text-[1.1rem] font-bold leading-tight">{o.name}</span>
+                      {factsOf(o) && <span className="mt-0.5 block text-[0.92rem] leading-snug text-ink-2">{factsOf(o)}</span>}
+                    </span>
+                    <ChevronRight className="size-5 shrink-0 rotate-90 text-gold-text" aria-hidden />
+                  </button>
+                </div>
+              </div>
+              {/* Open: the full card. */}
+              <div className="grid transition-[grid-template-rows] duration-300 ease-out" style={{ gridTemplateRows: open ? "1fr" : "0fr" }}>
+                <div className="min-h-0 overflow-hidden" aria-hidden={!open}>
+                  {open && <PickDetail o={o} n={j + 1} onSelect={onSelect} />}
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </article>
+  );
+}
+
+/** Everything about one pick: tall photo with its name, why, facts, fit badges, actions, sources. */
+function PickDetail({ o, n, onSelect }: { o: Option; n: number; onSelect: () => void }) {
+  return (
+    <div className="pb-1">
       <button type="button" onClick={onSelect} className="block w-full text-left" aria-label={`Show ${o.name} on the map`}>
         <div className="relative h-60 bg-sunk">
           <Photo src={photoSrc(o)} className="absolute inset-0 h-full w-full" />
           <div className="absolute inset-0 bg-gradient-to-t from-[#120d0b] via-[#120d0b]/45 to-transparent" />
-          <div className="absolute inset-x-4 bottom-3">
-            <h3 className="text-[1.6rem] text-[#faf6f1] drop-shadow">{o.name}</h3>
-            {o.mentions >= 2 ? (
-              <p className="flex items-start gap-1.5 font-bold leading-snug text-[#f3d9ad]">
-                <Heart className="mt-[0.2em] size-4 shrink-0 fill-current" aria-hidden /> Local favorite · named by {o.mentions} guides
-              </p>
-            ) : o.cuisine ? (
-              <p className="font-bold text-[#f3d9ad]">{o.cuisine}</p>
-            ) : null}
+          <div className="absolute inset-x-4 bottom-3 flex items-end gap-3">
+            <span className="mb-1 grid size-9 shrink-0 place-items-center rounded-full border-2 border-[#c9a063] bg-[#120d0b] font-extrabold text-[#f3d9ad]">{n}</span>
+            <div className="min-w-0">
+              <h3 className="text-[1.6rem] text-[#faf6f1] drop-shadow">{o.name}</h3>
+              {o.mentions >= 2 ? (
+                <p className="flex items-start gap-1.5 font-bold leading-snug text-[#f3d9ad]">
+                  <Heart className="mt-[0.2em] size-4 shrink-0 fill-current" aria-hidden /> Local favorite · named by {o.mentions} guides
+                </p>
+              ) : o.cuisine ? (
+                <p className="font-bold text-[#f3d9ad]">{o.cuisine}</p>
+              ) : null}
+            </div>
           </div>
         </div>
       </button>
@@ -94,49 +148,16 @@ export function StopTicket({ stop, chosen, active, onSelect, onChoose }: { stop:
       {o.sources.length > 0 && (
         <p className="px-4 pb-3 text-[0.9rem] text-ink-2">
           Sources:{" "}
-          {o.sources.map((s, i) => (
-            <span key={s.url}>
+          {o.sources.map((src, i) => (
+            <span key={src.url}>
               {i > 0 && ", "}
-              <a href={s.url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
-                {hostOf(s.url)}
+              <a href={src.url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+                {hostOf(src.url)}
               </a>
             </span>
           ))}
         </p>
       )}
-      {rows.length > 1 && (
-        <>
-          <div className="perf mx-4" />
-          <div className="px-4 pb-3 pt-3">
-            <p className="kicker text-gold-text">All 4 picks · tap to hear about one</p>
-            <ul className="mt-1 space-y-1">
-              {rows.map(({ x, j }) => (
-                <li key={x.id}>
-                  <button type="button" onClick={() => onChoose(j)} aria-current={j === chosen} className={`flex w-full items-center gap-3 rounded-xl border-2 px-2 py-2 text-left transition ${j === chosen ? "border-gold bg-[rgba(201,160,99,0.14)]" : "border-transparent hover:bg-[rgba(201,160,99,0.08)]"}`} aria-label={`Show ${x.name}`}>
-                    <span className="relative size-12 shrink-0 overflow-hidden rounded-xl border-2 border-gold bg-sunk">
-                      <Photo src={photoSrc(x)} className="absolute inset-0 h-full w-full" iconClass="size-5" />
-                      <span className="absolute bottom-0.5 left-0.5 grid size-6 place-items-center rounded-full bg-[#120d0b] text-[0.8rem] font-extrabold text-[#f3d9ad]">{j + 1}</span>
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-display text-[1.1rem] font-bold leading-tight">{x.name}</span>
-                      {factsOf(x) && <span className="mt-0.5 block text-[0.92rem] leading-snug text-ink-2">{factsOf(x)}</span>}
-                      {/* The why is in the big ticket once tapped; phones skip it here to stay calm. */}
-                      {x.why && <span className="mt-0.5 hidden text-[0.92rem] leading-snug text-ink-2 lg:block">{x.why}</span>}
-                    </span>
-                    {j === chosen ? (
-                      <span className="grid size-7 shrink-0 place-items-center rounded-full bg-[#f0c98e] text-[#1a1210]" aria-label="Showing">
-                        <Check className="size-4" strokeWidth={3} aria-hidden />
-                      </span>
-                    ) : (
-                      <ChevronRight className="size-5 shrink-0 text-gold-text" aria-hidden />
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </>
-      )}
-    </article>
+    </div>
   );
 }

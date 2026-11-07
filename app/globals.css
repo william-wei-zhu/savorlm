@@ -147,6 +147,11 @@ h3 {
   right: -0.6rem;
   clip-path: inset(0 50% 0 0);
 }
+/* The accordion ticket has no fixed photo edge, so no notches. */
+.ticket.no-notch::before,
+.ticket.no-notch::after {
+  display: none;
+}
 .perf {
   border-top: 2px dashed var(--line);
 }
