@@ -7,10 +7,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Check, ChevronLeft, ChevronRight, History, Keyboard, Mic, Send, Share2, Sparkles, Square, Trash2, Volume2, VolumeX, RotateCcw, Settings, X } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, History, List as ListIcon, Map as MapIcon, Keyboard, Mic, Send, Share2, Sparkles, Square, Trash2, Volume2, VolumeX, RotateCcw, Settings, X } from "lucide-react";
 import { MapView, type MapHandle, type Pin } from "./map-view";
 import { Savvy } from "./savvy";
-import { StopTicket } from "./stop-card";
+import { StopTicket, factsOf } from "./stop-card";
 import { Photo } from "./photo";
 import { audio } from "@/lib/audio/engine";
 import { Mic as MicRecorder, blobToBase64 } from "@/lib/audio/recorder";
@@ -109,6 +109,13 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   const [recent, setRecent] = useState<Chat[]>([]);
   const [recentOpen, setRecentOpen] = useState(false);
   const openElRef = useRef<HTMLDivElement>(null);
+  // Phones in a chat show one thing at a time: the list or the map (William 2026-11-06: "too busy").
+  const [mobileView, setMobileView] = useState<"list" | "map">("list");
+  const topRef = useRef<HTMLElement>(null); // the header
+  const switchRef = useRef<HTMLDivElement>(null); // the List / Map switch (phones)
+  const dockRef = useRef<HTMLDivElement>(null);
+  const captionRef = useRef<HTMLSpanElement>(null);
+  const [capOver, setCapOver] = useState(false); // the dock caption is clamped (show "More")
   const [stops, setStops] = useState<StopCard[]>(initialTour?.stops ?? []);
   const [active, setActive] = useState<number | null>(null);
   const [choice, setChoice] = useState<Record<number, number>>({});
@@ -138,6 +145,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
     voiceRef.current = v;
     // A city URL (savorlm.com/miami) wins; the home page guesses from the time zone.
     if (!initialCity) setCity(guessCity());
+    setRecent(loadChats());
     const t = setTimeout(() => setIntro(false), 2900);
     // After the hello wave, Savvy settles into listening.
     const w = setTimeout(() => setPose((p) => (p === "wave" ? "listen" : p)), 5200);
@@ -150,6 +158,38 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   useEffect(() => {
     cityRef.current = city;
   }, [city]);
+
+  // Phones: List or Map is remembered for this visit.
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (sessionStorage.getItem("slm_view") === "map") setMobileView("map");
+    } catch {}
+  }, []);
+
+  // Phones: the real heights of the header (plus the view switch) and Savvy's
+  // dock, so the map fills exactly the space between them and the panel pads
+  // for the dock even when its caption is expanded.
+  const inChat = thread.length > 0;
+  useEffect(() => {
+    const root = document.documentElement;
+    const measure = () => {
+      root.style.setProperty("--top-h", `${(topRef.current?.offsetHeight ?? 0) + (switchRef.current?.offsetHeight ?? 0)}px`);
+      root.style.setProperty("--dock-h", `${dockRef.current?.offsetHeight ?? 0}px`);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    for (const el of [topRef.current, switchRef.current, dockRef.current]) if (el) ro.observe(el);
+    return () => ro.disconnect();
+  }, [inChat, landing]);
+
+  // The dock caption shows "More" only when its 3 lines cut something off.
+  useEffect(() => {
+    const el = captionRef.current;
+    if (!el) return;
+    const id = requestAnimationFrame(() => setCapOver(el.scrollHeight > el.clientHeight + 1));
+    return () => cancelAnimationFrame(id);
+  }, [caption, capOpen]);
 
   // A shared list: pins and camera on its first stop once the map is up.
   useEffect(() => {
@@ -323,7 +363,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
     const ch = choiceRef.current;
     const stops: Pin[] = stopsRef.current.map((s, i) => ({ ...pickOf(s, ch), label: String(i + 1) }));
     const act = activeIdx === null ? null : stopsRef.current[activeIdx];
-    const alts: Pin[] = act ? act.options.map((o, j) => ({ ...o, label: `${activeIdx! + 1}.${j + 1}` })).filter((_, j) => j !== (ch[act.index] ?? 0)) : [];
+    const alts: Pin[] = act ? act.options.map((o, j) => ({ ...o, label: `${activeIdx! + 1}.${j + 1}`, opt: j })).filter((_, j) => j !== (ch[act.index] ?? 0)) : [];
     map.current?.setStops(stops, activeIdx, alts);
   }, []);
 
@@ -705,6 +745,30 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
     setTimeout(() => openElRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
   };
 
+  /** Phones: switch between the list and the map (the map re-centers on the pick on show). */
+  const showView = (v: "list" | "map") => {
+    setMobileView(v);
+    try {
+      sessionStorage.setItem("slm_view", v);
+    } catch {}
+    if (v === "map") {
+      window.scrollTo({ top: 0 });
+      if (stopsRef.current.length) setTimeout(() => focusStop(0), 80);
+    } else setTimeout(() => openElRef.current?.scrollIntoView({ block: "start" }), 60);
+  };
+  const isPhone = () => window.matchMedia("(max-width: 63.99rem)").matches;
+
+  const recentBtn = (
+    <button type="button" onClick={() => openRecent()} className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk" aria-label="Recent chats" title="Recent chats">
+      <History className="size-5" />
+    </button>
+  );
+  const newChatBtn = (
+    <button type="button" onClick={() => reset()} className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk" aria-label="New chat" title="New chat">
+      <RotateCcw className="size-4" aria-hidden />
+    </button>
+  );
+
   const openRecent = () => {
     const list = loadChats();
     setRecent(list);
@@ -775,7 +839,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
   /** The city picker in the header's city bar. */
   const citySelect = (id: string, cls: string) => (
     <div className="relative min-w-0 flex-1">
-      <select id={id} value={city} onChange={(e) => pickCity(e.target.value as CityId)} aria-label="City" className={`w-full cursor-pointer appearance-none rounded-xl border-2 border-gold bg-surface pl-3 pr-10 font-display font-bold text-ink ${cls}`}>
+      <select id={id} value={city} onChange={(e) => pickCity(e.target.value as CityId)} aria-label="City" className={`w-full cursor-pointer appearance-none rounded-xl border-2 border-gold bg-surface pl-3 pr-9 font-display font-bold text-ink max-[380px]:text-[1.05rem] ${cls}`}>
         {REGIONS.map((r) => (
           <optgroup key={r} label={r}>
             {CITY_IDS.filter((c) => CITIES[c].region === r).map((c) => (
@@ -786,18 +850,22 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
           </optgroup>
         ))}
       </select>
-      <ChevronRight className="pointer-events-none absolute right-3 top-1/2 size-5 -translate-y-1/2 rotate-90 text-gold-text" aria-hidden />
+      <ChevronRight className="pointer-events-none absolute right-2.5 top-1/2 size-5 -translate-y-1/2 rotate-90 text-gold-text" aria-hidden />
     </div>
   );
 
   return (
-    <div className="grid min-h-dvh grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(25rem,32rem)_minmax(0,1fr)]">
+    <div className="grid min-h-dvh grid-cols-[minmax(0,1fr)] max-lg:content-start lg:grid-cols-[minmax(25rem,32rem)_minmax(0,1fr)]">
       {intro && <Intro />}
 
       {/* The map with Savvy standing on it (desktop). On phones the map sits
           between the header and the panel, and is hidden while choosing a city. */}
-      <section className={`relative order-1 ${stops.length || busy ? "h-[48dvh]" : "h-[36dvh]"} transition-[height] duration-500 lg:sticky lg:top-0 lg:order-2 lg:block lg:h-dvh lg:self-start ${landing ? "hidden" : ""}`} aria-label="Map">
-        <MapView ref={map} className="absolute inset-0" initial={landing ? US_VIEW : center(city)} onPick={(i) => (landingRef.current ? pickCity(CITY_IDS[i], "map") : focusStop(i))} />
+      <section className={`relative order-1 ${chatting ? (mobileView === "map" ? "max-lg:h-[calc(100dvh-var(--top-h,9rem)-var(--dock-h,8rem))]" : "max-lg:hidden") : stops.length || busy ? "h-[48dvh]" : "h-[36dvh]"} transition-[height] duration-500 lg:sticky lg:top-0 lg:order-2 lg:block lg:h-dvh lg:self-start ${landing ? "hidden" : ""}`} aria-label="Map">
+        <MapView ref={map} className="absolute inset-0" initial={landing ? US_VIEW : center(city)} onPick={(i) => (landingRef.current ? pickCity(CITY_IDS[i], "map") : focusStop(i))} onPickAlt={(j) => choose(0, j)} padBottom={chatting && mobileView === "map" && stops.length ? 190 : 0} />
+        {/* Phones, Map view: the four picks as swipeable cards over the map. */}
+        {chatting && mobileView === "map" && stops[0] && (
+          <MapCarousel stop={stops[0]} chosen={choice[stops[0].index] ?? 0} onShow={(j) => showOption(0, j)} onTap={(j) => choose(0, j)} onDetails={(j) => (showOption(0, j), showView("list"))} />
+        )}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 hidden items-end gap-3 p-6 lg:flex">
           <div className="savvy-stage pointer-events-auto w-56 shrink-0 xl:w-64 2xl:w-72">
             <Savvy pose={pose} speaking={speaking} className="h-auto w-full" onPoke={poke} />
@@ -844,40 +912,54 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
       {/* The left column: a printed evening menu. On phones it dissolves
           (display: contents) so the header sits above the map and the panel below. */}
       <div className="menu contents lg:order-1 lg:flex lg:min-h-dvh lg:flex-col">
-        <header className="menu-part order-0 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 px-5 pb-3 pt-4 lg:gap-x-3 lg:gap-y-2.5 lg:px-6 lg:pt-6">
+        <header ref={topRef} className="menu-part order-0 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 px-5 pb-3 pt-4 lg:gap-x-3 lg:gap-y-2.5 lg:px-6 lg:pt-6">
           <div className="rounded-full border-2 border-gold p-1">
             <Image src="/savvy/avatar.webp" alt="" width={64} height={64} className="size-9 rounded-full bg-[#2a211d] sm:size-10 lg:size-14" />
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-[1.4rem] font-extrabold max-[380px]:text-[1.2rem] leading-tight tracking-tight lg:text-[2rem] lg:leading-none">{NAME}</h1>
           </div>
-          <button type="button" onClick={openRecent} className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk lg:size-11" aria-label="Recent chats" title="Recent chats">
-            <History className="size-5" />
-          </button>
           <button type="button" onClick={toggleVoice} className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk lg:size-11" aria-label={voice ? "Mute Savvy" : "Unmute Savvy"} title={voice ? "Mute Savvy" : "Unmute Savvy"}>
             {voice ? <Volume2 className="size-5" /> : <VolumeX className="size-5" />}
           </button>
           <Link href="/settings" className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk lg:size-11" aria-label="Settings" title="Settings">
             <Settings className="size-5" />
           </Link>
-          {/* The city bar: compact, in the header (above the map on phones). */}
+          {/* The city bar: compact, in the header (above the map on phones). On
+              phones in a chat, Recent and New chat move next to the List / Map
+              switch so the city name always has room. */}
           {!landing && (
             <div className="flex basis-full items-center gap-2 pt-1">
-              <button type="button" onClick={allCities} className="btn shrink-0 border-2 border-gold py-1.5 pl-2 pr-3 text-[0.9rem] text-ink hover:bg-sunk">
-                <ChevronLeft className="size-4" aria-hidden /> All cities
+              <button type="button" onClick={allCities} className="btn shrink-0 border-2 border-gold py-1.5 pl-2 pr-2 text-[0.9rem] text-ink hover:bg-sunk sm:pr-3" aria-label="All cities" title="All cities">
+                <ChevronLeft className="size-4" aria-hidden /> <span className="max-sm:sr-only">All cities</span>
               </button>
               {citySelect("city", "py-1.5 text-[1.15rem]")}
-              {thread.length > 0 && (
-                <button type="button" onClick={reset} className="btn size-10 shrink-0 border-2 border-gold p-0 text-ink hover:bg-sunk" aria-label="New chat" title="New chat">
-                  <RotateCcw className="size-4" aria-hidden />
-                </button>
-              )}
+              <span className={chatting ? "contents max-lg:hidden" : "contents"}>{recentBtn}</span>
+              {thread.length > 0 && <span className="contents max-lg:hidden">{newChatBtn}</span>}
             </div>
           )}
         </header>
 
+        {/* Phones in a chat: one thing at a time, the list or the map. Sticks under the top while the list scrolls. */}
+        {chatting && (
+          <div ref={switchRef} className="menu-part sticky top-0 z-30 order-0 px-5 pb-2.5 pt-1 lg:hidden">
+            <div className="flex items-center gap-2">
+            <div role="tablist" aria-label="Show the list or the map" className="grid flex-1 grid-cols-2 gap-1 rounded-full border-2 border-gold p-1">
+              {(["list", "map"] as const).map((v) => (
+                <button key={v} type="button" role="tab" aria-selected={mobileView === v} onClick={() => showView(v)} className={`btn py-1.5 ${mobileView === v ? "btn-primary" : "text-ink hover:bg-sunk"}`}>
+                  {v === "list" ? <ListIcon className="size-4" aria-hidden /> : <MapIcon className="size-4" aria-hidden />}
+                  {v === "list" ? "List" : "Map"}
+                </button>
+              ))}
+            </div>
+            {recentBtn}
+            {newChatBtn}
+            </div>
+          </div>
+        )}
+
         {/* The panel: the ask, the picks, the footer. */}
-        <section className={`menu-part order-2 flex flex-1 flex-col ${chatting ? "pb-48" : "pb-32"} lg:pb-0`}>
+        <section className={`menu-part order-2 flex flex-1 flex-col max-lg:pb-[calc(var(--dock-h,8rem)+1rem)] lg:pb-0 ${chatting && mobileView === "map" ? "max-lg:hidden" : ""}`}>
         <div className="hidden px-6 lg:block">
           <div className="ornament text-[0.8rem]" aria-hidden>
             ✦
@@ -886,7 +968,14 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
 
         {landing ? (
           <div className="flex-1 px-6 pb-8 pt-5">
-            <h2 className="text-[2rem] leading-tight">Where are we eating?</h2>
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+              <h2 className="text-[2rem] leading-tight">Where are we eating?</h2>
+              {recent.length > 0 && (
+                <button type="button" onClick={openRecent} className="btn shrink-0 border-2 border-gold py-1.5 text-ink hover:bg-sunk">
+                  <History className="size-4" aria-hidden /> Recent chats
+                </button>
+              )}
+            </div>
             <p className="mb-5 mt-2 text-ink-2">Pick a city. Then tell Savvy what you&apos;re craving, from a quick salad to a big night out, and he&apos;ll find the places locals love.</p>
             <CityChooser near={city} onPick={(c) => pickCity(c, "chooser")} />
           </div>
@@ -977,7 +1066,7 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
                   )}
                   {stops.map((st, k) => (
                     <div key={`${st.index}-${st.options[0]?.id}`}>
-                      <StopTicket stop={st} chosen={choice[st.index] ?? 0} active={active === k} onSelect={() => focusStop(k)} onChoose={(j) => choose(k, j)} />
+                      <StopTicket stop={st} chosen={choice[st.index] ?? 0} active={active === k} onSelect={() => (focusStop(k), isPhone() && showView("map"))} onChoose={(j) => choose(k, j)} />
                     </div>
                   ))}
                   {!stops.length && reply && !busy && <SavvyLine text={reply} />}
@@ -1040,11 +1129,11 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
 
         {/* Phones: Savvy docks at the bottom like a "now playing" bar. It is
             opaque and the panel pads for it, so he never covers the text. */}
-        <div className="menu fixed inset-x-0 bottom-0 z-30 border-t-2 border-gold lg:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <div ref={dockRef} className="menu fixed inset-x-0 bottom-0 z-30 border-t-2 border-gold lg:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
           {/* In a chat, the follow-up box rides on top of the dock (the dock's mic is the voice button). */}
-          {chatting && <div className="mx-auto max-w-2xl px-3 pt-2.5">{composer("ask-next-m", false, "Ask a follow-up...")}</div>}
+          {chatting && mobileView === "list" && <div className="mx-auto max-w-2xl px-3 pt-2.5">{composer("ask-next-m", false, "Ask a follow-up...")}</div>}
           <div className="mx-auto flex max-w-2xl items-center gap-3 px-3 py-2">
-            <div className={`savvy-stage shrink-0 ${chatting ? "w-[4rem]" : "-mt-7 w-[4.75rem]"}`}>
+            <div className={`savvy-stage shrink-0 ${chatting ? "w-[3.25rem]" : "-mt-7 w-[4.75rem]"}`}>
               <Savvy pose={pose} speaking={speaking} className="h-auto w-full" onPoke={poke} />
             </div>
             <button type="button" onClick={() => setCapOpen((o) => (o === caption ? "" : caption))} className="min-w-0 flex-1 text-left" aria-expanded={capOpen === caption} aria-live="polite">
@@ -1057,8 +1146,14 @@ export function GuideApp({ initialCity, initialTour }: { initialCity?: CityId; i
                     ))}
                   </span>
                 )}
+                {(capOpen === caption || capOver) && (
+                  <span className="ml-auto inline-flex items-center gap-0.5 text-[0.85rem] font-bold text-gold-text">
+                    {capOpen === caption ? "Less" : "More"}
+                    <ChevronDown className={`size-4 ${capOpen === caption ? "rotate-180" : ""}`} aria-hidden />
+                  </span>
+                )}
               </span>
-              <span className={`text-[1rem] leading-snug ${capOpen === caption ? "block" : chatting ? "line-clamp-2" : "line-clamp-3"}`}>{caption}</span>
+              <span ref={captionRef} className={`text-[1rem] leading-snug ${capOpen === caption ? "block" : chatting ? "line-clamp-2" : "line-clamp-3"}`}>{caption}</span>
             </button>
             {speaking ? (
               <button type="button" onClick={stopTalking} className="btn size-12 shrink-0 border-2 border-gold p-0 text-ink" aria-label="Stop talking">
@@ -1092,13 +1187,63 @@ function FoldedList({ a, onOpen }: { a: Answer; onOpen: () => void }) {
       </span>
       <span className="min-w-0 flex-1">
         <span className="kicker block text-gold-text">Savvy&apos;s top {opts.length}</span>
-        <span className="block truncate font-display text-[1.1rem] font-bold leading-tight">{a.title || "Savvy's picks"}</span>
-        <span className="block truncate text-[0.9rem] text-ink-2">{opts.map((o) => o.name).join(", ")}</span>
+        <span className="block font-display text-[1.1rem] font-bold leading-tight">{a.title || "Savvy's picks"}</span>
+        <span className="mt-0.5 block text-[0.9rem] leading-snug text-ink-2">{opts.map((o) => o.name).join(" · ")}</span>
       </span>
       <span className="grid size-9 shrink-0 place-items-center rounded-full border-[1.5px] border-gold text-gold-text" aria-hidden>
         <ChevronRight className="size-5" />
       </span>
     </button>
+  );
+}
+
+/** Phones, Map view: the four picks as snap cards. Swiping shows that pick on the map, tapping has Savvy talk about it, Details opens it in the list. */
+function MapCarousel({ stop, chosen, onShow, onTap, onDetails }: { stop: StopCard; chosen: number; onShow: (j: number) => void; onTap: (j: number) => void; onDetails: (j: number) => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A pin tap (or a pick chosen elsewhere) brings that card to the middle.
+  useEffect(() => {
+    const el = box.current?.children[chosen] as HTMLElement | undefined;
+    if (el && box.current) box.current.scrollTo({ left: el.offsetLeft - (box.current.clientWidth - el.offsetWidth) / 2, behavior: "smooth" });
+  }, [chosen]);
+  const onScroll = () => {
+    if (settle.current) clearTimeout(settle.current);
+    settle.current = setTimeout(() => {
+      const b = box.current;
+      if (!b) return;
+      const mid = b.scrollLeft + b.clientWidth / 2;
+      let best = 0;
+      let gap = Infinity;
+      Array.from(b.children).forEach((c, j) => {
+        const e = c as HTMLElement;
+        const d = Math.abs(e.offsetLeft + e.offsetWidth / 2 - mid);
+        if (d < gap) [gap, best] = [d, j];
+      });
+      if (best !== chosen) onShow(best);
+    }, 160);
+  };
+  return (
+    <div className="absolute inset-x-0 bottom-3 z-20 lg:hidden">
+      <div ref={box} onScroll={onScroll} className="flex snap-x snap-mandatory gap-3 overflow-x-auto px-[10%] pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Savvy's picks">
+        {stop.options.map((o, j) => (
+          <div key={o.id} className={`menu w-[80%] shrink-0 snap-center rounded-2xl border-2 p-2.5 shadow-[var(--shadow)] ${j === chosen ? "border-gold" : "border-line"}`}>
+            <button type="button" onClick={() => onTap(j)} className="flex w-full items-center gap-3 text-left" aria-label={`Show ${o.name}`}>
+              <span className="relative size-16 shrink-0 overflow-hidden rounded-xl border-2 border-gold bg-sunk">
+                <Photo src={photoSrc(o)} className="absolute inset-0 h-full w-full" iconClass="size-5" />
+                <span className="absolute bottom-0.5 left-0.5 grid size-6 place-items-center rounded-full bg-[#120d0b] text-[0.8rem] font-extrabold text-[#f3d9ad]">{j + 1}</span>
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-display text-[1.1rem] font-bold leading-tight">{o.name}</span>
+                <span className="mt-0.5 block text-[0.9rem] leading-snug text-ink-2">{factsOf(o) || o.cuisine}</span>
+              </span>
+            </button>
+            <button type="button" onClick={() => onDetails(j)} className="btn mt-2 w-full border-2 border-gold py-1.5 text-ink hover:bg-sunk">
+              Details <ChevronRight className="size-4" aria-hidden />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1149,7 +1294,7 @@ function RecentChats({ chats, onPick, onClose, onClear }: { chats: Chat[]; onPic
                         <span className="kicker block text-gold-text">
                           {CITIES[c.city]?.name ?? "Somewhere"} · {ago(c.updatedAt)}
                         </span>
-                        <span className="block truncate font-display text-[1.15rem] font-semibold leading-snug">{chatTitle(c)}</span>
+                        <span className="block font-display text-[1.15rem] font-semibold leading-snug">{chatTitle(c)}</span>
                         <span className="block text-[0.9rem] text-ink-2">{n === 1 ? "1 list" : `${n} lists`}</span>
                       </span>
                       <span className="chev" aria-hidden>

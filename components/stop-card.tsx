@@ -1,6 +1,6 @@
 "use client";
 
-import { MapPin, Phone, CalendarCheck, Star, ShieldCheck, Heart, ChevronRight } from "lucide-react";
+import { MapPin, Phone, CalendarCheck, Star, ShieldCheck, Heart, ChevronRight, Check } from "lucide-react";
 import { photoSrc, type Option, type StopCard as Stop } from "@/lib/guide/scene";
 import { Photo } from "./photo";
 
@@ -14,6 +14,11 @@ function hostOf(u: string) {
   } catch {
     return u;
   }
+}
+
+/** The short facts for a pick ("Named by 7 guides · Open now · 4.5 Yelp"): never clamped. */
+export function factsOf(x: Option): string {
+  return [x.mentions >= 2 ? `Named by ${x.mentions} guides` : "", x.openNow === "open" ? "Open now" : x.openNow === "closed" ? "Closed now" : "", x.rating].filter(Boolean).join(" · ");
 }
 
 function Status({ o }: { o: Option }) {
@@ -36,13 +41,13 @@ export function StopTicket({ stop, chosen, active, onSelect, onChoose }: { stop:
         <div className="relative h-44 bg-sunk">
           <Photo src={photoSrc(o)} className="absolute inset-0 h-full w-full" />
           <div className="absolute inset-0 bg-gradient-to-t from-[#120d0b] via-[#120d0b]/45 to-transparent" />
-          <span className="kicker absolute left-3 top-3 max-w-[52%] truncate rounded-full border border-[#c9a063] bg-[#120d0b] px-3 py-1 text-[#f3d9ad]">{stop.role}</span>
-          <span className="kicker absolute right-3 top-3 max-w-[40%] truncate rounded-full bg-[#f0c98e] px-3 py-1 text-[#1a1210]">{chosen === 0 ? "Top pick" : `Pick ${chosen + 1} of ${stop.options.length}`}</span>
+          <span className="kicker absolute left-3 top-3 max-w-[calc(100%-8.5rem)] rounded-full border border-[#c9a063] bg-[#120d0b] px-3 py-1 leading-snug text-[#f3d9ad]">{stop.role}</span>
+          <span className="kicker absolute right-3 top-3 whitespace-nowrap rounded-full bg-[#f0c98e] px-3 py-1 text-[#1a1210]">{chosen === 0 ? "Top pick" : `Pick ${chosen + 1}`}</span>
           <div className="absolute inset-x-4 bottom-3">
             <h3 className="text-[1.6rem] text-[#faf6f1] drop-shadow">{o.name}</h3>
             {o.mentions >= 2 ? (
-              <p className="inline-flex items-center gap-1.5 font-bold text-[#f3d9ad]">
-                <Heart className="size-4 fill-current" aria-hidden /> Local favorite · named by {o.mentions} guides
+              <p className="flex items-start gap-1.5 font-bold leading-snug text-[#f3d9ad]">
+                <Heart className="mt-[0.2em] size-4 shrink-0 fill-current" aria-hidden /> Local favorite · named by {o.mentions} guides
               </p>
             ) : o.cuisine ? (
               <p className="font-bold text-[#f3d9ad]">{o.cuisine}</p>
@@ -105,22 +110,28 @@ export function StopTicket({ stop, chosen, active, onSelect, onChoose }: { stop:
         <>
           <div className="perf mx-4" />
           <div className="px-4 pb-3 pt-3">
-            <p className="kicker text-gold-text">Top picks · tap one to hear about it</p>
+            <p className="kicker text-gold-text">All 4 picks · tap to hear about one</p>
             <ul className="mt-1 space-y-1">
               {rows.map(({ x, j }) => (
                 <li key={x.id}>
                   <button type="button" onClick={() => onChoose(j)} aria-current={j === chosen} className={`flex w-full items-center gap-3 rounded-xl border-2 px-2 py-2 text-left transition ${j === chosen ? "border-gold bg-[rgba(201,160,99,0.14)]" : "border-transparent hover:bg-[rgba(201,160,99,0.08)]"}`} aria-label={`Show ${x.name}`}>
-                    <span className="relative size-14 shrink-0 overflow-hidden rounded-xl border-2 border-gold bg-sunk">
+                    <span className="relative size-12 shrink-0 overflow-hidden rounded-xl border-2 border-gold bg-sunk">
                       <Photo src={photoSrc(x)} className="absolute inset-0 h-full w-full" iconClass="size-5" />
                       <span className="absolute bottom-0.5 left-0.5 grid size-6 place-items-center rounded-full bg-[#120d0b] text-[0.8rem] font-extrabold text-[#f3d9ad]">{j + 1}</span>
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block font-display text-[1.1rem] font-bold leading-tight">{x.name}</span>
-                      <span className="line-clamp-2 text-[0.92rem] leading-snug text-ink-2">
-                        {[x.mentions >= 2 ? `Named by ${x.mentions} guides` : "", x.openNow === "open" ? "Open now" : x.openNow === "closed" ? "Closed now" : "", x.rating, x.why].filter(Boolean).join(" · ")}
-                      </span>
+                      {factsOf(x) && <span className="mt-0.5 block text-[0.92rem] leading-snug text-ink-2">{factsOf(x)}</span>}
+                      {/* The why is in the big ticket once tapped; phones skip it here to stay calm. */}
+                      {x.why && <span className="mt-0.5 hidden text-[0.92rem] leading-snug text-ink-2 lg:block">{x.why}</span>}
                     </span>
-                    {j === chosen ? <span className="kicker shrink-0 rounded-full bg-[#f0c98e] px-2 py-0.5 text-[#1a1210]">Showing</span> : <ChevronRight className="size-5 shrink-0 text-gold-text" aria-hidden />}
+                    {j === chosen ? (
+                      <span className="grid size-7 shrink-0 place-items-center rounded-full bg-[#f0c98e] text-[#1a1210]" aria-label="Showing">
+                        <Check className="size-4" strokeWidth={3} aria-hidden />
+                      </span>
+                    ) : (
+                      <ChevronRight className="size-5 shrink-0 text-gold-text" aria-hidden />
+                    )}
                   </button>
                 </li>
               ))}

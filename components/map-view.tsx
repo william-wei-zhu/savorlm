@@ -8,7 +8,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import type { Shot } from "@/lib/guide/geo";
 
 /** A place on the map: a stop's pick, one of the active stop's other options, or a city on the landing page. */
-export type Pin = { name: string; lat: number; lng: number; label: string; icon?: string };
+export type Pin = { name: string; lat: number; lng: number; label: string; icon?: string; /** For the active stop's other options: which option (tapping it picks that one). */ opt?: number };
 
 export type MapHandle = {
   fly: (shot: Shot) => Promise<void>;
@@ -88,20 +88,24 @@ function zoomFor(range: number, lat: number, px: number) {
 
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
-type Props = { className?: string; initial: { lat: number; lng: number; range?: number }; onPick?: (index: number) => void };
+type Props = { className?: string; initial: { lat: number; lng: number; range?: number }; onPick?: (index: number) => void; onPickAlt?: (option: number) => void; /** Pixels covered at the bottom (phone pick cards): flights aim above them. */ padBottom?: number };
 
-export const MapView = forwardRef<MapHandle, Props>(function MapView({ className = "", initial, onPick }, ref) {
+export const MapView = forwardRef<MapHandle, Props>(function MapView({ className = "", initial, onPick, onPickAlt, padBottom = 0 }, ref) {
   const host = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
   const overlays = useRef<{ remove: () => void }[]>([]);
   const anim = useRef(0);
   const last = useRef<{ stops: Pin[]; active: number | null; alts: Pin[] }>({ stops: [], active: null, alts: [] });
   const onPickRef = useRef(onPick);
+  const onPickAltRef = useRef(onPickAlt);
+  const padRef = useRef(padBottom);
   const [state, setState] = useState<"loading" | "ready" | "off">(KEY ? "loading" : "off");
 
   useEffect(() => {
     onPickRef.current = onPick;
-  }, [onPick]);
+    onPickAltRef.current = onPickAlt;
+    padRef.current = padBottom;
+  }, [onPick, onPickAlt, padBottom]);
 
   const drawStops = useCallback((stops: Pin[], active: number | null, alts: Pin[] = []) => {
     overlays.current.forEach((o) => o.remove());
@@ -116,6 +120,7 @@ export const MapView = forwardRef<MapHandle, Props>(function MapView({ className
     for (const { s, big, alt, i } of items) {
       const el = pinEl(s, big, alt);
       if (i >= 0) el.addEventListener("click", () => onPickRef.current?.(i));
+      else if (s.opt !== undefined) el.addEventListener("click", () => onPickAltRef.current?.(s.opt!));
       class Marker extends google.maps.OverlayView {
         onAdd() {
           this.getPanes()!.overlayMouseTarget.appendChild(el);
@@ -180,14 +185,16 @@ export const MapView = forwardRef<MapHandle, Props>(function MapView({ className
           const c0 = g.getCenter()!;
           const z0 = g.getZoom() ?? 12;
           const z1 = zoomFor(shot.range * 1.6, shot.lat, host.current.clientWidth);
-          const dist = Math.hypot(shot.lat - c0.lat(), shot.lng - c0.lng());
+          // Aim south of the target by half the covered strip so it lands in the clear part.
+          const lat1 = shot.lat - ((padRef.current / 2) * 360 * Math.cos((shot.lat * Math.PI) / 180)) / (256 * 2 ** z1);
+          const dist = Math.hypot(lat1 - c0.lat(), shot.lng - c0.lng());
           const dip = Math.min(2.5, dist * 40);
           const ms = Math.min(2600, Math.max(900, shot.durationMs * 0.55));
           const t0 = performance.now();
           const step = (now: number) => {
             const t = Math.min(1, (now - t0) / ms);
             const k = ease(t);
-            g.moveCamera({ center: { lat: c0.lat() + (shot.lat - c0.lat()) * k, lng: c0.lng() + (shot.lng - c0.lng()) * k }, zoom: z0 + (z1 - z0) * k - dip * Math.sin(Math.PI * t) });
+            g.moveCamera({ center: { lat: c0.lat() + (lat1 - c0.lat()) * k, lng: c0.lng() + (shot.lng - c0.lng()) * k }, zoom: z0 + (z1 - z0) * k - dip * Math.sin(Math.PI * t) });
             if (t < 1) anim.current = requestAnimationFrame(step);
             else resolve();
           };
